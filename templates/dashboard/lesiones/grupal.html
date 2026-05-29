@@ -1,0 +1,332 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}Dashboard - Lesiones - Grupal{% endblock %}
+
+{% block extra_css %}
+<style>
+  .lesiones-shell {
+    padding: 1.5rem 0;
+  }
+
+  .lesiones-panel {
+    background: rgba(255, 255, 255, .95);
+    border-radius: .75rem;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, .14);
+  }
+
+  .lesiones-title {
+    color: #111827;
+    font-weight: 800;
+  }
+
+  .metric-card {
+    height: 100%;
+    border: 1px solid rgba(17, 24, 39, .08);
+    border-radius: .5rem;
+    background: #fff;
+  }
+
+  .metric-label {
+    min-height: 2.5rem;
+    color: #6b7280;
+    font-size: .76rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .metric-value {
+    color: #111827;
+    font-size: clamp(1.15rem, 1.7vw, 1.65rem);
+    font-weight: 800;
+    line-height: 1.12;
+    overflow-wrap: anywhere;
+  }
+
+  .metric-hint {
+    color: #6b7280;
+    font-size: .8rem;
+  }
+
+  .tab-pane-shell {
+    min-height: 260px;
+  }
+
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    min-width: 5.5rem;
+    justify-content: center;
+    border-radius: 999px;
+    padding: .25rem .65rem;
+    font-size: .78rem;
+    font-weight: 700;
+  }
+
+  .status-activo {
+    background: rgba(255, 140, 0, .18);
+    color: #92400e;
+  }
+
+  .status-inactivo {
+    background: rgba(34, 197, 94, .15);
+    color: #166534;
+  }
+
+  .status-default {
+    background: rgba(107, 114, 128, .14);
+    color: #374151;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid lesiones-shell">
+  <section class="lesiones-panel p-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+      <div>
+        <h1 class="lesiones-title mb-1">Analisis grupal</h1>
+        <p class="text-muted mb-0">
+          Lectura agregada de lesiones por plantel.
+          {% if period_label %}<span class="fw-semibold">{{ period_label }}</span>{% endif %}
+        </p>
+      </div>
+      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('dashboard_lesiones.index', plantel=plantel, period=period) }}">
+        Volver a inicio
+      </a>
+    </div>
+  </section>
+
+  <section class="lesiones-panel p-4 mb-4">
+    <form method="get" class="row g-3 align-items-end">
+      <div class="col-12 col-md-3">
+        <label for="plantel" class="form-label">Plantel</label>
+        <select id="plantel" name="plantel" class="form-select">
+          {% for competition in competitions %}
+            <option value="{{ competition.codigo }}" {% if plantel == competition.codigo|string %}selected{% endif %}>
+              {{ competition.nombre }}{% if competition.codigo %} ({{ competition.codigo }}){% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-2">
+        <label for="posicion" class="form-label">Posicion</label>
+        <select id="posicion" name="posicion" class="form-select">
+          <option value="">Todas</option>
+          {% for option in filters.posiciones %}
+            <option value="{{ option }}" {% if filters.posicion == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-3">
+        <label for="tipo" class="form-label">Tipo de lesion</label>
+        <select id="tipo" name="tipo" class="form-select">
+          <option value="">Todas</option>
+          {% for option in filters.tipos %}
+            <option value="{{ option }}" {% if filters.tipo == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-2">
+        <label for="period" class="form-label">Rango rapido</label>
+        <select id="period" name="period" class="form-select">
+          {% for option in period_options %}
+            <option value="{{ option.key }}" {% if period == option.key %}selected{% endif %}>{{ option.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-2 d-flex gap-2">
+        <button type="submit" class="btn btn-primary flex-fill">Filtrar</button>
+        <a class="btn btn-outline-secondary" href="{{ url_for('dashboard_lesiones.grupal') }}">Limpiar</a>
+      </div>
+
+      <div class="col-12">
+        <div class="small text-muted">
+          Rango actual:
+          {% if start_date and end_date %}
+            {{ start_date.strftime('%d/%m/%Y') }} - {{ end_date.strftime('%d/%m/%Y') }}
+          {% else %}
+            Sin fechas disponibles
+          {% endif %}
+        </div>
+      </div>
+    </form>
+  </section>
+
+  <section class="lesiones-panel p-4 mb-4">
+    {% if all_records_count == 0 %}
+      <div class="alert alert-warning mb-0">No hay lesiones disponibles para este plantel.</div>
+    {% elif filtered_records_count == 0 %}
+      <div class="alert alert-info mb-0">No hay lesiones para los filtros seleccionados.</div>
+    {% elif period_records_count == 0 %}
+      <div class="alert alert-info mb-0">No hay lesiones registradas en el periodo seleccionado.</div>
+    {% else %}
+      <div class="row g-3">
+        {% for kpi in kpis %}
+          <div class="col-12 col-sm-6 col-lg-4 col-xxl-2">
+            <div class="metric-card p-3">
+              <div class="metric-label">{{ kpi.label }}</div>
+              <div class="metric-value">{{ kpi.value }}</div>
+              <div class="metric-hint mt-2">{{ kpi.hint }}</div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="lesiones-panel p-4">
+    <ul class="nav nav-tabs" id="lesionesGrupalTabs" role="tablist">
+      {% for tab in [
+        ('evolucion', 'Evolucion'),
+        ('distribucion', 'Distribucion'),
+        ('impacto', 'Impacto'),
+        ('jugadoras', 'Jugadoras'),
+        ('tipo-especifico', 'Tipo especifico'),
+        ('recidivas', 'Recidivas'),
+        ('registros', 'Registros')
+      ] %}
+        <li class="nav-item" role="presentation">
+          <button
+            class="nav-link {% if loop.first %}active{% endif %}"
+            id="{{ tab[0] }}-tab"
+            data-bs-toggle="tab"
+            data-bs-target="#{{ tab[0] }}"
+            type="button"
+            role="tab"
+            aria-controls="{{ tab[0] }}"
+            aria-selected="{{ 'true' if loop.first else 'false' }}"
+          >
+            {{ tab[1] }}
+          </button>
+        </li>
+      {% endfor %}
+    </ul>
+
+    <div class="tab-content pt-4">
+      <div class="tab-pane fade show active tab-pane-shell" id="evolucion" role="tabpanel" aria-labelledby="evolucion-tab">
+        {% if evolution_chart.labels %}
+          <h2 class="h5 lesiones-title mb-3">Evolucion de lesiones, jugadoras lesionadas y lesiones graves</h2>
+          <div class="position-relative" style="height:360px;">
+            <canvas
+              id="evolucionResumenChart"
+              data-labels='{{ evolution_chart.labels | tojson }}'
+              data-lesiones='{{ evolution_chart.lesiones | tojson }}'
+              data-jugadoras='{{ evolution_chart.jugadoras | tojson }}'
+              data-graves='{{ evolution_chart.graves | tojson }}'
+            ></canvas>
+          </div>
+        {% else %}
+          <div class="alert alert-info mb-0">No hay datos suficientes para mostrar la evolucion.</div>
+        {% endif %}
+      </div>
+
+      {% for tab_id in ['distribucion', 'impacto', 'jugadoras', 'tipo-especifico', 'recidivas'] %}
+        <div class="tab-pane fade tab-pane-shell" id="{{ tab_id }}" role="tabpanel" aria-labelledby="{{ tab_id }}-tab">
+          <div class="alert alert-secondary mb-0">Pendiente de migrar.</div>
+        </div>
+      {% endfor %}
+
+      <div class="tab-pane fade tab-pane-shell" id="registros" role="tabpanel" aria-labelledby="registros-tab">
+        {% if records %}
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Jugadora</th>
+                  <th>ID lesion</th>
+                  <th>Fecha lesion</th>
+                  <th>Tipo lesion</th>
+                  <th>Zona corporal</th>
+                  <th>Zona especifica</th>
+                  <th>Tipo especifico</th>
+                  <th>Recidiva</th>
+                  <th>Lugar</th>
+                  <th>Mecanismo</th>
+                  <th>Dias baja</th>
+                  <th>Severidad</th>
+                  <th>Estado</th>
+                  <th>Reporta</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for record in records %}
+                  <tr>
+                    <td class="fw-semibold">{{ record.nombre_jugadora or "-" }}</td>
+                    <td>{{ record.id_lesion or "-" }}</td>
+                    <td>{{ record.fecha_lesion.strftime('%Y-%m-%d') if record.fecha_lesion else "-" }}</td>
+                    <td>{{ record.tipo_lesion or "-" }}</td>
+                    <td>{{ record.zona_cuerpo or "-" }}</td>
+                    <td>{{ record.zona_especifica or "-" }}</td>
+                    <td>{{ record.tipo_especifico or "-" }}</td>
+                    <td>{{ "Si" if record.es_recidiva else "No" }}</td>
+                    <td>{{ record.lugar or "-" }}</td>
+                    <td>{{ record.mecanismo or "-" }}</td>
+                    <td>{{ record.dias_baja_estimado if record.dias_baja_estimado is not none else "-" }}</td>
+                    <td>{{ record.impacto_dias_baja_estimado or "-" }}</td>
+                    <td>
+                      {% set status = record.estado_lesion or "" %}
+                      <span class="status-pill {% if status == 'ACTIVO' %}status-activo{% elif status == 'INACTIVO' %}status-inactivo{% else %}status-default{% endif %}">
+                        {{ status or "-" }}
+                      </span>
+                    </td>
+                    <td>{{ record.personal_reporta or "-" }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="alert alert-info mb-0">No hay registros para mostrar con los filtros seleccionados.</div>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const canvas = document.getElementById('evolucionResumenChart');
+  if (!canvas || !window.Chart) return;
+
+  const labels = JSON.parse(canvas.dataset.labels || '[]');
+  const lesiones = JSON.parse(canvas.dataset.lesiones || '[]');
+  const jugadoras = JSON.parse(canvas.dataset.jugadoras || '[]');
+  const graves = JSON.parse(canvas.dataset.graves || '[]');
+
+  new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Lesiones', data: lesiones, backgroundColor: 'rgba(13, 110, 253, .70)' },
+        { label: 'Jugadoras lesionadas', data: jugadoras, backgroundColor: 'rgba(25, 135, 84, .70)' },
+        { label: 'Graves / muy graves', data: graves, backgroundColor: 'rgba(220, 53, 69, .70)' }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: { mode: 'index', intersect: false }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { precision: 0 }
+        }
+      }
+    }
+  });
+});
+</script>
+{% endblock %}

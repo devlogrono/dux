@@ -95,6 +95,9 @@
           {% if period_label %}<span class="fw-semibold">{{ period_label }}</span>{% endif %}
         </p>
       </div>
+      <a class="btn btn-outline-primary btn-sm" href="{{ url_for('dashboard_lesiones.grupal', plantel=plantel, period=period) }}">
+        Analisis grupal
+      </a>
 
       <form method="get" class="d-flex flex-wrap align-items-end gap-2">
         <input type="hidden" name="period" value="{{ period }}">
