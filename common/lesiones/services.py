@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from flask_login import current_user
@@ -9,7 +9,7 @@ from sqlalchemy import text
 
 from dux import db
 from dux.common.lesiones.queries import get_lesiones_competitions, get_lesiones_records
-from dux.common.lesiones.transforms import normalize_records, to_float
+from dux.common.lesiones.transforms import coerce_date, normalize_records, to_float
 
 
 DEFAULT_PLANTEL = "1FF"
@@ -219,6 +219,151 @@ def _build_groupal_kpis(
         {"label": "Mecanismo mas frecuente", "value": mecanismo_top["label"], "hint": f"{mecanismo_top['count']} casos"},
         {"label": "Lugar mas frecuente", "value": lugar_top["label"], "hint": f"{lugar_top['count']} casos"},
     ]
+
+
+def _calculate_age(value: Any) -> int | None:
+    birth_date = coerce_date(value)
+    if birth_date is None:
+        return None
+    today = datetime.today().date()
+    return today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
+
+
+def _build_player_options(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    players: dict[str, dict[str, Any]] = {}
+    for record in records:
+        player_id = str(record.get("id_jugadora") or "").strip()
+        if not player_id or player_id in players:
+            continue
+        players[player_id] = {
+            "id": player_id,
+            "nombre": record.get("nombre_jugadora") or player_id,
+        }
+    return sorted(players.values(), key=lambda item: item["nombre"])
+
+
+def _select_player_id(records: list[dict[str, Any]], selected: str | None = None) -> str | None:
+    valid_ids = {str(record.get("id_jugadora")) for record in records if record.get("id_jugadora")}
+    if selected and selected in valid_ids:
+        return selected
+    dated = sorted(
+        [record for record in records if record.get("id_jugadora")],
+        key=lambda record: (record.get("fecha_lesion") is not None, record.get("fecha_lesion")),
+        reverse=True,
+    )
+    return str(dated[0]["id_jugadora"]) if dated else None
+
+
+def _build_player_card(player_records: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not player_records:
+        return None
+    base = player_records[0]
+    fecha_nacimiento = coerce_date(base.get("fecha_nacimiento"))
+    foto_proxy_url = None
+    if base.get("foto_url") or base.get("foto_url_drive"):
+        foto_proxy_url = "dashboard_physical.player_photo"
+
+    return {
+        "id_jugadora": base.get("id_jugadora"),
+        "nombre": base.get("nombre_jugadora") or "-",
+        "dorsal": base.get("dorsal"),
+        "identificacion": base.get("id_jugadora") or "-",
+        "pais": base.get("nacionalidad") or "-",
+        "plantel": base.get("plantel") or "-",
+        "posicion": base.get("posicion") or "-",
+        "fecha_nacimiento": fecha_nacimiento,
+        "edad": _calculate_age(fecha_nacimiento),
+        "has_photo": bool(foto_proxy_url),
+    }
+
+
+def _build_individual_kpis(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    total = len(records)
+    active = sum(1 for record in records if record.get("estado_lesion") == "ACTIVO")
+    recidivas = sum(1 for record in records if record.get("es_recidiva"))
+    dias_values = [to_float(record.get("dias_baja_estimado")) or 0 for record in records]
+    dias_total = round(sum(dias_values), 1)
+    dias_promedio = _mean(dias_values)
+    graves = sum(
+        1 for record in records
+        if str(record.get("impacto_dias_baja_estimado") or "").strip().upper() in {"GRAVE", "MUY GRAVE"}
+    )
+    pct_graves = round((graves / total) * 100, 1) if total else 0
+    zona_top = _top_value(records, "zona_cuerpo")
+    tipo_top = _top_value(records, "tipo_lesion")
+
+    return [
+        {"label": "Total de lesiones registradas", "value": total, "hint": "Historial filtrado"},
+        {"label": "Lesiones activas", "value": active, "hint": "Estado actual"},
+        {"label": "Dias de baja totales", "value": dias_total, "hint": "Suma estimada"},
+        {"label": "Recidivas", "value": recidivas, "hint": "Marcadas como recidiva"},
+        {"label": "Dias de baja promedio", "value": dias_promedio, "hint": "Promedio estimado"},
+        {"label": "% lesiones graves/muy graves", "value": f"{pct_graves:.1f}%", "hint": f"{graves} de {total}"},
+        {"label": "Zona mas afectada", "value": zona_top["label"], "hint": f"{zona_top['count']} casos"},
+        {"label": "Tipo mas frecuente", "value": tipo_top["label"], "hint": f"{tipo_top['count']} casos"},
+    ]
+
+
+def _build_individual_history_chart(records: list[dict[str, Any]]) -> dict[str, Any]:
+    ordered = sorted(
+        [record for record in records if record.get("fecha_lesion")],
+        key=lambda record: record["fecha_lesion"],
+    )
+    return {
+        "labels": [record["fecha_lesion"].strftime("%Y-%m-%d") for record in ordered],
+        "dias": [to_float(record.get("dias_baja_estimado")) or 0 for record in ordered],
+        "tipos": [record.get("tipo_lesion") or "Lesion" for record in ordered],
+        "gravedad": [record.get("impacto_dias_baja_estimado") or "-" for record in ordered],
+    }
+
+
+def build_lesiones_individual_context(
+    plantel: str | None = None,
+    posicion: str | None = None,
+    jugadora: str | None = None,
+    tipo: str | None = None,
+) -> dict[str, Any]:
+    selected_plantel = plantel or DEFAULT_PLANTEL
+    user_filter_sql, user_params = _build_user_access_filter()
+    competitions = get_lesiones_competitions()
+    plantel_records = normalize_records(
+        get_lesiones_records(
+            plantel=selected_plantel,
+            user_filter_sql=user_filter_sql,
+            user_params=user_params,
+        )
+    )
+
+    position_options = _unique_options(plantel_records, "posicion")
+    records_after_position = _filter_groupal_records(plantel_records, posicion=posicion)
+    player_options = _build_player_options(records_after_position)
+    selected_player_id = _select_player_id(records_after_position, jugadora)
+    player_records_base = [
+        record for record in records_after_position
+        if selected_player_id and str(record.get("id_jugadora")) == selected_player_id
+    ]
+    type_options = _unique_options(player_records_base, "tipo_lesion")
+    player_records = _filter_groupal_records(player_records_base, tipo=tipo)
+
+    return {
+        "competitions": competitions,
+        "plantel": selected_plantel,
+        "filters": {
+            "posicion": posicion or "",
+            "jugadora": selected_player_id or "",
+            "tipo": tipo or "",
+            "posiciones": position_options,
+            "jugadoras": player_options,
+            "tipos": type_options,
+        },
+        "player": _build_player_card(player_records_base),
+        "kpis": _build_individual_kpis(player_records),
+        "records": player_records[:200],
+        "all_records_count": len(plantel_records),
+        "player_records_count": len(player_records_base),
+        "filtered_records_count": len(player_records),
+        "history_chart": _build_individual_history_chart(player_records),
+    }
 
 
 def _evolution_bucket(value: date, period: str) -> str:

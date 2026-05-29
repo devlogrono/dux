@@ -90,9 +90,14 @@
           {% if period_label %}<span class="fw-semibold">{{ period_label }}</span>{% endif %}
         </p>
       </div>
-      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('dashboard_lesiones.index', plantel=plantel, period=period) }}">
-        Volver a inicio
-      </a>
+      <div class="d-flex gap-2">
+        <a class="btn btn-outline-primary btn-sm" href="{{ url_for('dashboard_lesiones.individual', plantel=plantel, posicion=filters.posicion or None, tipo=filters.tipo or None) }}">
+          Analisis individual
+        </a>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('dashboard_lesiones.index', plantel=plantel, period=period) }}">
+          Volver a inicio
+        </a>
+      </div>
     </div>
   </section>
 

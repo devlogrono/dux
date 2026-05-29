@@ -1,0 +1,430 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}Dashboard - Lesiones - Individual{% endblock %}
+
+{% block extra_css %}
+<style>
+  .lesiones-shell {
+    padding: 1.5rem 0;
+  }
+
+  .lesiones-panel {
+    background: rgba(255, 255, 255, .95);
+    border-radius: .75rem;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, .14);
+  }
+
+  .lesiones-title {
+    color: #111827;
+    font-weight: 800;
+  }
+
+  .player-photo {
+    width: 160px;
+    height: 200px;
+    object-fit: cover;
+    border-radius: .5rem;
+    background: #e5e7eb;
+  }
+
+  .player-photo-placeholder {
+    width: 160px;
+    height: 200px;
+    border-radius: .5rem;
+    background: #e5e7eb;
+    color: #6b7280;
+    display: grid;
+    place-items: center;
+    font-size: 3rem;
+    font-weight: 800;
+  }
+
+  .metric-card {
+    height: 100%;
+    border: 1px solid rgba(17, 24, 39, .08);
+    border-radius: .5rem;
+    background: #fff;
+  }
+
+  .metric-label {
+    min-height: 2.5rem;
+    color: #6b7280;
+    font-size: .76rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .metric-value {
+    color: #111827;
+    font-size: clamp(1.15rem, 1.7vw, 1.65rem);
+    font-weight: 800;
+    line-height: 1.12;
+    overflow-wrap: anywhere;
+  }
+
+  .metric-hint {
+    color: #6b7280;
+    font-size: .8rem;
+  }
+
+  .info-label {
+    color: #6b7280;
+    font-size: .74rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .info-value {
+    color: #111827;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+  }
+
+  .tab-pane-shell {
+    min-height: 260px;
+  }
+
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    min-width: 5.5rem;
+    justify-content: center;
+    border-radius: 999px;
+    padding: .25rem .65rem;
+    font-size: .78rem;
+    font-weight: 700;
+  }
+
+  .status-activo {
+    background: rgba(255, 140, 0, .18);
+    color: #92400e;
+  }
+
+  .status-inactivo {
+    background: rgba(34, 197, 94, .15);
+    color: #166534;
+  }
+
+  .status-default {
+    background: rgba(107, 114, 128, .14);
+    color: #374151;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid lesiones-shell">
+  <section class="lesiones-panel p-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+      <div>
+        <h1 class="lesiones-title mb-1">Analisis individual</h1>
+        <p class="text-muted mb-0">Lectura de historial de lesiones por jugadora.</p>
+      </div>
+      <div class="d-flex gap-2">
+        <a class="btn btn-outline-primary btn-sm" href="{{ url_for('dashboard_lesiones.grupal', plantel=plantel, posicion=filters.posicion or None, tipo=filters.tipo or None) }}">
+          Analisis grupal
+        </a>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('dashboard_lesiones.index', plantel=plantel) }}">
+          Volver a inicio
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="lesiones-panel p-4 mb-4">
+    <form method="get" class="row g-3 align-items-end">
+      <div class="col-12 col-md-3">
+        <label for="plantel" class="form-label">Plantel</label>
+        <select id="plantel" name="plantel" class="form-select">
+          {% for competition in competitions %}
+            <option value="{{ competition.codigo }}" {% if plantel == competition.codigo|string %}selected{% endif %}>
+              {{ competition.nombre }}{% if competition.codigo %} ({{ competition.codigo }}){% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-2">
+        <label for="posicion" class="form-label">Posicion</label>
+        <select id="posicion" name="posicion" class="form-select">
+          <option value="">Todas</option>
+          {% for option in filters.posiciones %}
+            <option value="{{ option }}" {% if filters.posicion == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-3">
+        <label for="jugadora" class="form-label">Jugadora</label>
+        <select id="jugadora" name="jugadora" class="form-select">
+          {% for option in filters.jugadoras %}
+            <option value="{{ option.id }}" {% if filters.jugadora == option.id %}selected{% endif %}>{{ option.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-2">
+        <label for="tipo" class="form-label">Tipo de lesion</label>
+        <select id="tipo" name="tipo" class="form-select">
+          <option value="">Todas</option>
+          {% for option in filters.tipos %}
+            <option value="{{ option }}" {% if filters.tipo == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-2 d-flex gap-2">
+        <button type="submit" class="btn btn-primary flex-fill">Filtrar</button>
+        <a class="btn btn-outline-secondary" href="{{ url_for('dashboard_lesiones.individual', plantel=plantel) }}">Limpiar</a>
+      </div>
+    </form>
+  </section>
+
+  {% if not player %}
+    <section class="lesiones-panel p-4">
+      <div class="alert alert-info mb-0">No hay jugadoras con lesiones para los filtros seleccionados.</div>
+    </section>
+  {% else %}
+    <section class="lesiones-panel p-4 mb-4">
+      <div class="row g-4 align-items-stretch">
+        <div class="col-12 col-lg-auto">
+          {% if player.has_photo %}
+            <img
+              class="player-photo"
+              src="{{ url_for('dashboard_physical.player_photo', identificacion=player.identificacion) }}"
+              alt="{{ player.nombre }}"
+              onerror="this.style.display='none'; this.nextElementSibling.classList.remove('d-none');"
+            >
+            <div class="player-photo-placeholder d-none">{{ player.nombre[:1] }}</div>
+          {% else %}
+            <div class="player-photo-placeholder">{{ player.nombre[:1] }}</div>
+          {% endif %}
+        </div>
+        <div class="col">
+          <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+            <h2 class="lesiones-title mb-0">{{ player.nombre }}</h2>
+            {% if player.dorsal %}
+              <span class="badge bg-dark">#{{ player.dorsal }}</span>
+            {% endif %}
+          </div>
+          <div class="row g-3">
+            <div class="col-6 col-md-4 col-xl-3">
+              <div class="metric-card p-3">
+                <div class="info-label">Identificacion</div>
+                <div class="info-value">{{ player.identificacion }}</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-4 col-xl-3">
+              <div class="metric-card p-3">
+                <div class="info-label">Pais</div>
+                <div class="info-value">{{ player.pais }}</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-4 col-xl-3">
+              <div class="metric-card p-3">
+                <div class="info-label">Plantel</div>
+                <div class="info-value">{{ player.plantel }}</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-4 col-xl-3">
+              <div class="metric-card p-3">
+                <div class="info-label">Posicion</div>
+                <div class="info-value">{{ player.posicion }}</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-4 col-xl-3">
+              <div class="metric-card p-3">
+                <div class="info-label">Fecha nacimiento</div>
+                <div class="info-value">{{ player.fecha_nacimiento.strftime('%Y-%m-%d') if player.fecha_nacimiento else "-" }}</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-4 col-xl-3">
+              <div class="metric-card p-3">
+                <div class="info-label">Edad</div>
+                <div class="info-value">{{ player.edad if player.edad is not none else "-" }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="lesiones-panel p-4 mb-4">
+      {% if filtered_records_count == 0 %}
+        <div class="alert alert-info mb-0">No hay lesiones para el tipo seleccionado.</div>
+      {% else %}
+        <div class="row g-3">
+          {% for kpi in kpis %}
+            <div class="col-12 col-sm-6 col-xl-3">
+              <div class="metric-card p-3">
+                <div class="metric-label">{{ kpi.label }}</div>
+                <div class="metric-value">{{ kpi.value }}</div>
+                <div class="metric-hint mt-2">{{ kpi.hint }}</div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="lesiones-panel p-4">
+      <ul class="nav nav-tabs" id="lesionesIndividualTabs" role="tablist">
+        {% for tab in [
+          ('historial', 'Historial'),
+          ('distribucion', 'Distribucion'),
+          ('impacto', 'Impacto'),
+          ('tratamientos', 'Tratamientos'),
+          ('tipo-especifico', 'Tipo especifico'),
+          ('recidivas', 'Recidivas'),
+          ('registros', 'Registros')
+        ] %}
+          <li class="nav-item" role="presentation">
+            <button
+              class="nav-link {% if loop.first %}active{% endif %}"
+              id="{{ tab[0] }}-tab"
+              data-bs-toggle="tab"
+              data-bs-target="#{{ tab[0] }}"
+              type="button"
+              role="tab"
+              aria-controls="{{ tab[0] }}"
+              aria-selected="{{ 'true' if loop.first else 'false' }}"
+            >
+              {{ tab[1] }}
+            </button>
+          </li>
+        {% endfor %}
+      </ul>
+
+      <div class="tab-content pt-4">
+        <div class="tab-pane fade show active tab-pane-shell" id="historial" role="tabpanel" aria-labelledby="historial-tab">
+          {% if history_chart.labels %}
+            <h2 class="h5 lesiones-title mb-3">Evolucion temporal de lesiones con baja</h2>
+            <div class="position-relative" style="height:360px;">
+              <canvas
+                id="historialLesionesChart"
+                data-labels='{{ history_chart.labels | tojson }}'
+                data-dias='{{ history_chart.dias | tojson }}'
+                data-tipos='{{ history_chart.tipos | tojson }}'
+                data-gravedad='{{ history_chart.gravedad | tojson }}'
+              ></canvas>
+            </div>
+          {% else %}
+            <div class="alert alert-info mb-0">No hay datos suficientes para mostrar el historial.</div>
+          {% endif %}
+        </div>
+
+        {% for tab_id in ['distribucion', 'impacto', 'tratamientos', 'tipo-especifico', 'recidivas'] %}
+          <div class="tab-pane fade tab-pane-shell" id="{{ tab_id }}" role="tabpanel" aria-labelledby="{{ tab_id }}-tab">
+            <div class="alert alert-secondary mb-0">Pendiente de migrar.</div>
+          </div>
+        {% endfor %}
+
+        <div class="tab-pane fade tab-pane-shell" id="registros" role="tabpanel" aria-labelledby="registros-tab">
+          {% if records %}
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>ID lesion</th>
+                    <th>Fecha lesion</th>
+                    <th>Tipo lesion</th>
+                    <th>Zona corporal</th>
+                    <th>Zona especifica</th>
+                    <th>Tipo especifico</th>
+                    <th>Recidiva</th>
+                    <th>Lugar</th>
+                    <th>Mecanismo</th>
+                    <th>Dias baja</th>
+                    <th>Severidad</th>
+                    <th>Estado</th>
+                    <th>Reporta</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for record in records %}
+                    <tr>
+                      <td>{{ record.id_lesion or "-" }}</td>
+                      <td>{{ record.fecha_lesion.strftime('%Y-%m-%d') if record.fecha_lesion else "-" }}</td>
+                      <td>{{ record.tipo_lesion or "-" }}</td>
+                      <td>{{ record.zona_cuerpo or "-" }}</td>
+                      <td>{{ record.zona_especifica or "-" }}</td>
+                      <td>{{ record.tipo_especifico or "-" }}</td>
+                      <td>{{ "Si" if record.es_recidiva else "No" }}</td>
+                      <td>{{ record.lugar or "-" }}</td>
+                      <td>{{ record.mecanismo or "-" }}</td>
+                      <td>{{ record.dias_baja_estimado if record.dias_baja_estimado is not none else "-" }}</td>
+                      <td>{{ record.impacto_dias_baja_estimado or "-" }}</td>
+                      <td>
+                        {% set status = record.estado_lesion or "" %}
+                        <span class="status-pill {% if status == 'ACTIVO' %}status-activo{% elif status == 'INACTIVO' %}status-inactivo{% else %}status-default{% endif %}">
+                          {{ status or "-" }}
+                        </span>
+                      </td>
+                      <td>{{ record.personal_reporta or "-" }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="alert alert-info mb-0">No hay registros para mostrar con los filtros seleccionados.</div>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const canvas = document.getElementById('historialLesionesChart');
+  if (!canvas || !window.Chart) return;
+
+  const labels = JSON.parse(canvas.dataset.labels || '[]');
+  const dias = JSON.parse(canvas.dataset.dias || '[]');
+  const tipos = JSON.parse(canvas.dataset.tipos || '[]');
+  const gravedad = JSON.parse(canvas.dataset.gravedad || '[]');
+
+  new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Dias de baja estimados',
+        data: dias,
+        borderColor: '#0d6efd',
+        backgroundColor: 'rgba(13, 110, 253, .16)',
+        pointBackgroundColor: '#dc3545',
+        pointRadius: 5,
+        tension: .25,
+        fill: true
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            afterLabel: function (context) {
+              const i = context.dataIndex;
+              return ['Tipo: ' + (tipos[i] || '-'), 'Gravedad: ' + (gravedad[i] || '-')];
+            }
+          }
+        }
+      },
+      scales: {
+        y: { beginAtZero: true, title: { display: true, text: 'Dias de baja' } },
+        x: { title: { display: true, text: 'Fecha de lesion' } }
+      }
+    }
+  });
+});
+</script>
+{% endblock %}

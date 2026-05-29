@@ -98,6 +98,9 @@
       <a class="btn btn-outline-primary btn-sm" href="{{ url_for('dashboard_lesiones.grupal', plantel=plantel, period=period) }}">
         Analisis grupal
       </a>
+      <a class="btn btn-outline-primary btn-sm" href="{{ url_for('dashboard_lesiones.individual', plantel=plantel) }}">
+        Analisis individual
+      </a>
 
       <form method="get" class="d-flex flex-wrap align-items-end gap-2">
         <input type="hidden" name="period" value="{{ period }}">
@@ -158,7 +161,7 @@
         <h2 class="h5 lesiones-title mb-1">Ultimas lesiones</h2>
         <p class="text-muted mb-0">Tabla filtrable de registros del periodo seleccionado.</p>
       </div>
-      <a class="btn btn-outline-primary btn-sm disabled" aria-disabled="true" href="#">
+      <a class="btn btn-outline-primary btn-sm" href="{{ url_for('dashboard_lesiones.individual', plantel=plantel, jugadora=filters.jugadora or None, tipo=filters.tipo or None) }}">
         Analisis individual
       </a>
     </div>
