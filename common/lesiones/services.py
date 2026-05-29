@@ -77,6 +77,58 @@ def _period_filter(records: list[dict[str, Any]], period: str) -> tuple[list[dic
     return filtered, label
 
 
+def _month_add(value: date, months: int) -> date:
+    year = value.year + ((value.month - 1 + months) // 12)
+    month = ((value.month - 1 + months) % 12) + 1
+    day = min(value.day, _month_last_day(year, month))
+    return date(year, month, day)
+
+
+def _month_last_day(year: int, month: int) -> int:
+    if month == 12:
+        next_month = date(year + 1, 1, 1)
+    else:
+        next_month = date(year, month + 1, 1)
+    return (next_month - timedelta(days=1)).day
+
+
+def _period_overview(
+    records: list[dict[str, Any]],
+    period: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str, date | None, date | None]:
+    start, end = _period_bounds(records, period)
+    if not start or not end:
+        return [], [], "", None, None
+
+    current = [
+        record for record in records
+        if record.get("fecha_lesion") and start <= record["fecha_lesion"] <= end
+    ]
+
+    previous: list[dict[str, Any]] = []
+    if period == "semana":
+        prev_start = start - timedelta(days=7)
+        prev_end = start - timedelta(days=1)
+        previous = [
+            record for record in records
+            if record.get("fecha_lesion") and prev_start <= record["fecha_lesion"] <= prev_end
+        ]
+    elif period == "mes":
+        prev_end = start - timedelta(days=1)
+        prev_start = prev_end.replace(day=1)
+        previous = [
+            record for record in records
+            if record.get("fecha_lesion") and prev_start <= record["fecha_lesion"] <= prev_end
+        ]
+
+    if period == "mes":
+        label = start.strftime("%m/%Y")
+    else:
+        label = f"{start.strftime('%d/%m/%Y')} - {end.strftime('%d/%m/%Y')}"
+
+    return current, previous, label, start, end
+
+
 def _period_filter_with_bounds(
     records: list[dict[str, Any]],
     period: str,
@@ -103,6 +155,68 @@ def _mean(values: list[float | None]) -> float:
     return round(sum(clean) / len(clean), 1) if clean else 0
 
 
+def _format_delta(value: float | int | None, singular: str, plural: str | None = None) -> str | None:
+    if value is None:
+        return None
+    plural = plural or singular
+    value_fmt: float | int
+    if isinstance(value, float) and not value.is_integer():
+        value_fmt = round(value, 1)
+    else:
+        value_fmt = int(value)
+    sign = "+" if value_fmt > 0 else ""
+    unit = singular if abs(value_fmt) == 1 else plural
+    return f"{sign}{value_fmt} {unit}"
+
+
+def _chart_bucket(value: date, freq: str) -> str:
+    if freq == "W":
+        week_start = value - timedelta(days=value.weekday())
+        return week_start.strftime("%d/%m")
+    return value.strftime("%m/%Y")
+
+
+def _build_series_counts(records: list[dict[str, Any]], freq: str) -> list[int]:
+    buckets: dict[str, dict[str, Any]] = {}
+    for record in records:
+        fecha = record.get("fecha_lesion")
+        if not fecha:
+            continue
+        label = _chart_bucket(fecha, freq)
+        bucket = buckets.setdefault(label, {"sort": fecha, "value": 0})
+        bucket["sort"] = min(bucket["sort"], fecha)
+        bucket["value"] += 1
+    return [bucket["value"] for _, bucket in sorted(buckets.items(), key=lambda item: item[1]["sort"])]
+
+
+def _build_series_avg_days(records: list[dict[str, Any]], freq: str) -> list[float]:
+    buckets: dict[str, dict[str, Any]] = {}
+    for record in records:
+        fecha = record.get("fecha_lesion")
+        if not fecha:
+            continue
+        label = _chart_bucket(fecha, freq)
+        bucket = buckets.setdefault(label, {"sort": fecha, "values": []})
+        bucket["sort"] = min(bucket["sort"], fecha)
+        value = to_float(record.get("dias_baja_estimado"))
+        if value is not None:
+            bucket["values"].append(value)
+    return [
+        round(sum(bucket["values"]) / len(bucket["values"]), 1) if bucket["values"] else 0
+        for _, bucket in sorted(buckets.items(), key=lambda item: item[1]["sort"])
+    ]
+
+
+def _overview_chart_records(records: list[dict[str, Any]], period: str, start: date | None) -> tuple[list[dict[str, Any]], str]:
+    if not start:
+        return [], "M"
+    if period == "semana":
+        return [record for record in records if record.get("fecha_lesion") and record["fecha_lesion"] >= start - timedelta(days=56)], "W"
+    if period == "mes":
+        return [record for record in records if record.get("fecha_lesion") and record["fecha_lesion"] >= _month_add(start, -8)], "M"
+    return records, "M"
+
+
 def _top_value(records: list[dict[str, Any]], key: str) -> dict[str, Any]:
     values = [
         str(record.get(key) or "").strip()
@@ -115,11 +229,23 @@ def _top_value(records: list[dict[str, Any]], key: str) -> dict[str, Any]:
     return {"label": label, "count": count}
 
 
-def _build_kpis(period_records: list[dict[str, Any]], all_records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _build_kpis(
+    period_records: list[dict[str, Any]],
+    all_records: list[dict[str, Any]],
+    previous_records: list[dict[str, Any]] | None = None,
+    period: str = "semana",
+    period_start: date | None = None,
+) -> list[dict[str, Any]]:
+    previous_records = previous_records or []
     total = len(period_records)
     active = sum(1 for record in all_records if record.get("estado_lesion") == "ACTIVO")
     recidivas = sum(1 for record in period_records if record.get("es_recidiva"))
     avg_days = _mean([to_float(record.get("dias_baja_estimado")) for record in period_records])
+    prev_avg_days = _mean([to_float(record.get("dias_baja_estimado")) for record in previous_records])
+    chart_records, chart_freq = _overview_chart_records(all_records, period, period_start)
+    total_delta = total - len(previous_records) if period in {"semana", "mes"} else None
+    recidivas_delta = recidivas - sum(1 for record in previous_records if record.get("es_recidiva")) if period in {"semana", "mes"} else None
+    days_delta = round(avg_days - prev_avg_days, 1) if period in {"semana", "mes"} else None
     graves = sum(
         1 for record in period_records
         if str(record.get("impacto_dias_baja_estimado") or "").strip().upper() in {"GRAVE", "MUY GRAVE"}
@@ -130,10 +256,30 @@ def _build_kpis(period_records: list[dict[str, Any]], all_records: list[dict[str
     jugadora_top = _top_value(period_records, "nombre_jugadora")
 
     return [
-        {"label": "Total de lesiones registradas", "value": total, "hint": "En el periodo seleccionado"},
+        {
+            "label": "Total de lesiones registradas",
+            "value": total,
+            "hint": "En el periodo seleccionado",
+            "delta": _format_delta(total_delta, "caso", "casos"),
+            "delta_inverse": True,
+            "chart": _build_series_counts(chart_records, chart_freq),
+        },
         {"label": "Lesiones activas", "value": active, "hint": "Estado actual global"},
-        {"label": "Dias de recuperacion promedio", "value": avg_days, "hint": "Dias de baja estimados"},
-        {"label": "Recidivas", "value": recidivas, "hint": "Marcadas como recidiva"},
+        {
+            "label": "Dias de recuperacion promedio",
+            "value": avg_days,
+            "hint": "Dias de baja estimados",
+            "delta": _format_delta(days_delta, "dia", "dias"),
+            "delta_inverse": True,
+            "chart": _build_series_avg_days(chart_records, chart_freq),
+        },
+        {
+            "label": "Recidivas",
+            "value": recidivas,
+            "hint": "Marcadas como recidiva",
+            "delta": _format_delta(recidivas_delta, "caso", "casos"),
+            "delta_inverse": True,
+        },
         {"label": "% lesiones graves/muy graves", "value": f"{graves_pct:.1f}%", "hint": f"{graves} de {total}"},
         {"label": "Zona mas afectada", "value": zona_top["label"], "hint": f"{zona_top['count']} casos"},
         {"label": "Tipo mas frecuente", "value": tipo_top["label"], "hint": f"{tipo_top['count']} casos"},
@@ -239,6 +385,17 @@ def _build_player_options(records: list[dict[str, Any]]) -> list[dict[str, Any]]
             "id": player_id,
             "nombre": record.get("nombre_jugadora") or player_id,
         }
+    return sorted(players.values(), key=lambda item: item["nombre"])
+
+
+def _build_player_options_by_name(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    players: dict[str, dict[str, Any]] = {}
+    for record in records:
+        name = str(record.get("nombre_jugadora") or "").strip()
+        player_id = str(record.get("id_jugadora") or "").strip()
+        if not name or not player_id or name in players:
+            continue
+        players[name] = {"id": player_id, "nombre": name}
     return sorted(players.values(), key=lambda item: item["nombre"])
 
 
@@ -483,7 +640,7 @@ def build_lesiones_index_context(
             user_params=user_params,
         )
     )
-    period_records, period_label = _period_filter(records, period)
+    period_records, previous_records, period_label, period_start, _ = _period_overview(records, period)
     latest_records = _filter_latest_records(period_records, jugadora=jugadora, tipo=tipo, estado=estado)
 
     return {
@@ -496,7 +653,13 @@ def build_lesiones_index_context(
             {"key": "mes", "label": "Mes"},
             {"key": "temporada", "label": "Temporada"},
         ],
-        "kpis": _build_kpis(period_records, records),
+        "kpis": _build_kpis(
+            period_records,
+            records,
+            previous_records=previous_records,
+            period=period,
+            period_start=period_start,
+        ),
         "latest_records": latest_records[:50],
         "all_records_count": len(records),
         "period_records_count": len(period_records),
@@ -507,5 +670,6 @@ def build_lesiones_index_context(
             "jugadoras": _unique_options(period_records, "nombre_jugadora"),
             "tipos": _unique_options(period_records, "tipo_lesion"),
             "estados": _unique_options(period_records, "estado_lesion"),
+            "individual_options": _build_player_options_by_name(latest_records),
         },
     }

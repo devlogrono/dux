@@ -47,6 +47,30 @@
     font-size: .82rem;
   }
 
+  .metric-delta {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: .15rem .5rem;
+    font-size: .78rem;
+    font-weight: 800;
+  }
+
+  .metric-delta-up {
+    background: rgba(220, 53, 69, .12);
+    color: #b42318;
+  }
+
+  .metric-delta-down {
+    background: rgba(25, 135, 84, .12);
+    color: #166534;
+  }
+
+  .metric-delta-flat {
+    background: rgba(107, 114, 128, .14);
+    color: #374151;
+  }
+
   .period-toggle .btn {
     min-width: 8rem;
   }
@@ -95,12 +119,14 @@
           {% if period_label %}<span class="fw-semibold">{{ period_label }}</span>{% endif %}
         </p>
       </div>
-      <a class="btn btn-outline-primary btn-sm" href="{{ url_for('dashboard_lesiones.grupal', plantel=plantel, period=period) }}">
-        Analisis grupal
-      </a>
-      <a class="btn btn-outline-primary btn-sm" href="{{ url_for('dashboard_lesiones.individual', plantel=plantel) }}">
-        Analisis individual
-      </a>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-outline-primary btn-sm" href="{{ url_for('dashboard_lesiones.grupal', plantel=plantel, period=period) }}">
+          Analisis grupal
+        </a>
+        <a class="btn btn-outline-primary btn-sm" href="{{ url_for('dashboard_lesiones.individual', plantel=plantel) }}">
+          Analisis individual
+        </a>
+      </div>
 
       <form method="get" class="d-flex flex-wrap align-items-end gap-2">
         <input type="hidden" name="period" value="{{ period }}">
@@ -147,6 +173,14 @@
             <div class="metric-card p-3">
               <div class="metric-label">{{ kpi.label }}</div>
               <div class="metric-value">{{ kpi.value }}</div>
+              {% if kpi.delta %}
+                {% set delta_text = kpi.delta|string %}
+                <div class="mt-2">
+                  <span class="metric-delta {% if delta_text.startswith('+') %}metric-delta-up{% elif delta_text.startswith('-') %}metric-delta-down{% else %}metric-delta-flat{% endif %}">
+                    {{ kpi.delta }}
+                  </span>
+                </div>
+              {% endif %}
               <div class="metric-hint mt-2">{{ kpi.hint }}</div>
             </div>
           </div>
@@ -161,9 +195,6 @@
         <h2 class="h5 lesiones-title mb-1">Ultimas lesiones</h2>
         <p class="text-muted mb-0">Tabla filtrable de registros del periodo seleccionado.</p>
       </div>
-      <a class="btn btn-outline-primary btn-sm" href="{{ url_for('dashboard_lesiones.individual', plantel=plantel, jugadora=filters.jugadora or None, tipo=filters.tipo or None) }}">
-        Analisis individual
-      </a>
     </div>
 
     <form method="get" class="row g-3 align-items-end mb-4">
@@ -206,6 +237,26 @@
       </div>
     </form>
 
+    <form method="get" action="{{ url_for('dashboard_lesiones.individual') }}" class="row g-3 align-items-end mb-4">
+      <input type="hidden" name="plantel" value="{{ plantel }}">
+      {% if filters.tipo %}
+        <input type="hidden" name="tipo" value="{{ filters.tipo }}">
+      {% endif %}
+      <div class="col-12 col-md-5 col-xl-4">
+        <label for="abrir_jugadora" class="form-label">Abrir analisis individual de</label>
+        <select id="abrir_jugadora" name="jugadora" class="form-select" {% if not filters.individual_options %}disabled{% endif %}>
+          {% for option in filters.individual_options %}
+            <option value="{{ option.id }}">{{ option.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-3 col-xl-2">
+        <button type="submit" class="btn btn-outline-primary w-100" {% if not filters.individual_options %}disabled{% endif %}>
+          Abrir analisis
+        </button>
+      </div>
+    </form>
+
     {% if latest_records %}
       <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
@@ -226,7 +277,15 @@
           <tbody>
             {% for record in latest_records %}
               <tr>
-                <td class="fw-semibold">{{ record.nombre_jugadora or "-" }}</td>
+                <td class="fw-semibold">
+                  {% if record.id_jugadora %}
+                    <a href="{{ url_for('dashboard_lesiones.individual', plantel=plantel, jugadora=record.id_jugadora, tipo=filters.tipo or None) }}">
+                      {{ record.nombre_jugadora or "-" }}
+                    </a>
+                  {% else %}
+                    {{ record.nombre_jugadora or "-" }}
+                  {% endif %}
+                </td>
                 <td>{{ record.id_lesion or "-" }}</td>
                 <td>{{ record.fecha_lesion.strftime('%Y-%m-%d') if record.fecha_lesion else "-" }}</td>
                 <td>{{ record.zona_cuerpo or "-" }}</td>
