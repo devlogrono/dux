@@ -6,9 +6,12 @@ from typing import Any
 
 
 MAP_POSICIONES = {
+    "POR": "Portera",
+    "DEF": "Defensa",
+    "DEL": "Delantera",
     "PO": "Portera",
     "DF": "Defensa",
-    "MC": "Mediocampista",
+    "MC": "Centro",
     "DL": "Delantera",
 }
 

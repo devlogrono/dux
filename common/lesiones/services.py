@@ -318,9 +318,15 @@ def _filter_groupal_records(
 ) -> list[dict[str, Any]]:
     filtered = list(records)
     if posicion:
-        filtered = [record for record in filtered if record.get("posicion") == posicion]
+        filtered = [
+            record for record in filtered
+            if str(record.get("posicion") or "").strip() == str(posicion).strip()
+        ]
     if tipo:
-        filtered = [record for record in filtered if record.get("tipo_lesion") == tipo]
+        filtered = [
+            record for record in filtered
+            if str(record.get("tipo_lesion") or "").strip() == str(tipo).strip()
+        ]
     return filtered
 
 
@@ -331,7 +337,10 @@ def _count_with_baja(records: list[dict[str, Any]]) -> int:
 def _build_groupal_kpis(
     period_records: list[dict[str, Any]],
     base_records: list[dict[str, Any]],
+    previous_records: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
+    show_deltas = previous_records is not None
+    previous_records = previous_records or []
     total = len(period_records)
     jugadoras = len({record.get("id_jugadora") for record in period_records if record.get("id_jugadora")})
     active = sum(1 for record in base_records if record.get("estado_lesion") == "ACTIVO")
@@ -351,15 +360,29 @@ def _build_groupal_kpis(
     mecanismo_top = _top_value(period_records, "mecanismo")
     lugar_top = _top_value(period_records, "lugar")
 
+    prev_total = len(previous_records)
+    prev_jugadoras = len({record.get("id_jugadora") for record in previous_records if record.get("id_jugadora")})
+    prev_recidivas = sum(1 for record in previous_records if record.get("es_recidiva"))
+    prev_dias_values = [to_float(record.get("dias_baja_estimado")) or 0 for record in previous_records]
+    prev_dias_total = round(sum(prev_dias_values), 1)
+    prev_dias_promedio = _mean(prev_dias_values)
+    prev_graves = sum(
+        1 for record in previous_records
+        if str(record.get("impacto_dias_baja_estimado") or "").strip().upper() in {"GRAVE", "MUY GRAVE"}
+    )
+    prev_con_baja = _count_with_baja(previous_records)
+    prev_pct_graves = round((prev_graves / prev_total) * 100, 1) if prev_total else 0
+    prev_pct_baja = round((prev_con_baja / prev_total) * 100, 1) if prev_total else 0
+
     return [
-        {"label": "Total de lesiones", "value": total, "hint": "Registros del periodo"},
-        {"label": "Jugadoras lesionadas", "value": jugadoras, "hint": "Jugadoras unicas"},
+        {"label": "Total de lesiones", "value": total, "hint": "Registros del periodo", "delta": _format_delta(total - prev_total, "caso", "casos") if show_deltas else None},
+        {"label": "Jugadoras lesionadas", "value": jugadoras, "hint": "Jugadoras unicas", "delta": _format_delta(jugadoras - prev_jugadoras, "caso", "casos") if show_deltas else None},
         {"label": "Lesiones activas", "value": active, "hint": "Estado actual filtrado"},
-        {"label": "Recidivas", "value": recidivas, "hint": "Marcadas como recidiva"},
-        {"label": "Dias de baja totales", "value": dias_total, "hint": "Suma estimada"},
-        {"label": "Dias de baja promedio", "value": dias_promedio, "hint": "Promedio estimado"},
-        {"label": "% lesiones graves/muy graves", "value": f"{pct_graves:.1f}%", "hint": f"{graves} de {total}"},
-        {"label": "% lesiones con baja", "value": f"{pct_baja:.1f}%", "hint": f"{con_baja} de {total}"},
+        {"label": "Recidivas", "value": recidivas, "hint": f"{round((recidivas / total) * 100, 1) if total else 0:.1f}%", "delta": _format_delta(recidivas - prev_recidivas, "caso", "casos") if show_deltas else None},
+        {"label": "Dias de baja totales", "value": dias_total, "hint": "Suma estimada", "delta": _format_delta(dias_total - prev_dias_total, "dia", "dias") if show_deltas else None},
+        {"label": "Dias de baja promedio", "value": dias_promedio, "hint": "Promedio estimado", "delta": _format_delta(dias_promedio - prev_dias_promedio, "dia", "dias") if show_deltas else None},
+        {"label": "% lesiones graves/muy graves", "value": f"{pct_graves:.1f}%", "hint": f"{graves} de {total}", "delta": f"{pct_graves - prev_pct_graves:+.1f} pp" if show_deltas else None},
+        {"label": "% lesiones con baja", "value": f"{pct_baja:.1f}%", "hint": f"{con_baja} de {total}", "delta": f"{pct_baja - prev_pct_baja:+.1f} pp" if show_deltas else None},
         {"label": "Tipo mas frecuente", "value": tipo_top["label"], "hint": f"{tipo_top['count']} casos"},
         {"label": "Zona mas afectada", "value": zona_top["label"], "hint": f"{zona_top['count']} casos"},
         {"label": "Mecanismo mas frecuente", "value": mecanismo_top["label"], "hint": f"{mecanismo_top['count']} casos"},
@@ -523,58 +546,584 @@ def build_lesiones_individual_context(
     }
 
 
-def _evolution_bucket(value: date, period: str) -> str:
-    if period == "semana":
+def _parse_date_param(value: str | None) -> date | None:
+    if not value:
+        return None
+    return coerce_date(value)
+
+
+def _date_range(start: date, end: date) -> list[date]:
+    days = (end - start).days
+    if days < 0:
+        return []
+    return [start + timedelta(days=i) for i in range(days + 1)]
+
+
+def _week_labels_for_month(start: date, end: date) -> list[tuple[str, int]]:
+    max_week = ((end.day - 1) // 7) + 1
+    labels = []
+    for week in range(1, max_week + 1):
+        first = (week - 1) * 7 + 1
+        last = min(week * 7, end.day)
+        labels.append((f"S{week} ({first}-{last})", week))
+    return labels
+
+
+def _month_range(start: date, end: date) -> list[date]:
+    current = start.replace(day=1)
+    stop = end.replace(day=1)
+    values = []
+    while current <= stop:
+        values.append(current)
+        current = _month_add(current, 1)
+    return values
+
+
+def _time_bucket_config(start: date | None, end: date | None) -> str:
+    if not start or not end:
+        return "M"
+    duration = (end - start).days + 1
+    if duration <= 7:
+        return "D"
+    if duration <= 31:
+        return "WEEK_IN_MONTH"
+    return "M"
+
+
+def _empty_bucket_map(start: date | None, end: date | None, mode: str) -> dict[str, dict[str, Any]]:
+    if not start or not end:
+        return {}
+    if mode == "D":
+        return {
+            value.strftime("%d/%m"): {"sort": value}
+            for value in _date_range(start, end)
+        }
+    if mode == "WEEK_IN_MONTH":
+        return {
+            label: {"sort": week}
+            for label, week in _week_labels_for_month(start, end)
+        }
+    return {
+        value.strftime("%m/%Y"): {"sort": value}
+        for value in _month_range(start, end)
+    }
+
+
+def _record_bucket_label(value: date, mode: str, end: date | None = None) -> str:
+    if mode == "D":
         return value.strftime("%d/%m")
-    if period == "mes":
-        week_start = value - timedelta(days=value.weekday())
-        return week_start.strftime("%d/%m")
+    if mode == "WEEK_IN_MONTH":
+        week = ((value.day - 1) // 7) + 1
+        first = (week - 1) * 7 + 1
+        period_last_day = end.day if end and end.year == value.year and end.month == value.month else _month_last_day(value.year, value.month)
+        last = min(week * 7, period_last_day)
+        return f"S{week} ({first}-{last})"
     return value.strftime("%m/%Y")
 
 
-def _build_evolution_summary_chart(records: list[dict[str, Any]], period: str) -> dict[str, Any]:
-    buckets: dict[str, dict[str, Any]] = {}
+def _build_evolution_charts(records: list[dict[str, Any]], start: date | None, end: date | None) -> dict[str, Any]:
+    empty = {
+        "summary": {"labels": [], "lesiones": [], "jugadoras": [], "graves": [], "muy_graves": []},
+        "dias_baja": {"labels": [], "values": []},
+        "nuevas_recidivas": {"labels": [], "nuevas": [], "recidivas": []},
+    }
+    if not records:
+        return empty
+
+    mode = _time_bucket_config(start, end)
+    base = _empty_bucket_map(start, end, mode)
+    if not base:
+        return empty
+
+    summary = {
+        label: {
+            **meta,
+            "lesiones": 0,
+            "jugadoras": set(),
+            "graves": 0,
+            "muy_graves": 0,
+            "dias_baja": 0.0,
+            "nuevas": 0,
+            "recidivas": 0,
+        }
+        for label, meta in base.items()
+    }
 
     for record in records:
         fecha = record.get("fecha_lesion")
         if not fecha:
             continue
-
-        label = _evolution_bucket(fecha, period)
-        bucket = buckets.setdefault(
-            label,
-            {
-                "sort": fecha,
-                "lesiones": 0,
-                "jugadoras": set(),
-                "graves": 0,
-            },
-        )
-        bucket["sort"] = min(bucket["sort"], fecha)
+        label = _record_bucket_label(fecha, mode, end=end)
+        if label not in summary:
+            continue
+        bucket = summary[label]
         bucket["lesiones"] += 1
         if record.get("id_jugadora"):
             bucket["jugadoras"].add(record["id_jugadora"])
-        if str(record.get("impacto_dias_baja_estimado") or "").strip().upper() in {"GRAVE", "MUY GRAVE"}:
+        gravedad = str(record.get("impacto_dias_baja_estimado") or "").strip().upper()
+        if gravedad == "GRAVE":
             bucket["graves"] += 1
+        elif gravedad == "MUY GRAVE":
+            bucket["muy_graves"] += 1
+        bucket["dias_baja"] += to_float(record.get("dias_baja_estimado")) or 0
+        if record.get("es_recidiva"):
+            bucket["recidivas"] += 1
+        else:
+            bucket["nuevas"] += 1
 
-    ordered = sorted(buckets.items(), key=lambda item: item[1]["sort"])
+    ordered = sorted(summary.items(), key=lambda item: item[1]["sort"])
     labels = [label for label, _ in ordered]
     return {
-        "labels": labels,
-        "lesiones": [data["lesiones"] for _, data in ordered],
-        "jugadoras": [len(data["jugadoras"]) for _, data in ordered],
-        "graves": [data["graves"] for _, data in ordered],
+        "summary": {
+            "labels": labels,
+            "lesiones": [data["lesiones"] for _, data in ordered],
+            "jugadoras": [len(data["jugadoras"]) for _, data in ordered],
+            "graves": [data["graves"] for _, data in ordered],
+            "muy_graves": [data["muy_graves"] for _, data in ordered],
+        },
+        "dias_baja": {
+            "labels": labels,
+            "values": [round(data["dias_baja"], 1) for _, data in ordered],
+        },
+        "nuevas_recidivas": {
+            "labels": labels,
+            "nuevas": [data["nuevas"] for _, data in ordered],
+            "recidivas": [data["recidivas"] for _, data in ordered],
+        },
     }
+
+
+def _severity_label(record: dict[str, Any]) -> str:
+    severity = str(record.get("impacto_dias_baja_estimado") or "").strip().upper()
+    dias_baja = to_float(record.get("dias_baja_estimado")) or 0
+    if not severity and dias_baja == 0:
+        return "SIN BAJA"
+    if severity in {"MENOR", "MINIMA", "MÍNIMA"}:
+        return "LEVE"
+    return severity or "N/A"
+
+
+def _category_counts(records: list[dict[str, Any]], *keys: str) -> dict[tuple[str, ...], int]:
+    counts: dict[tuple[str, ...], int] = {}
+    for record in records:
+        values = tuple(str(record.get(key) or "N/A").strip() or "N/A" for key in keys)
+        counts[values] = counts.get(values, 0) + 1
+    return counts
+
+
+def _ordered_categories_from_counts(counts: dict[tuple[str, ...], int], index: int = 0) -> list[str]:
+    totals: dict[str, int] = {}
+    for key, value in counts.items():
+        totals[key[index]] = totals.get(key[index], 0) + value
+    return [key for key, _ in sorted(totals.items(), key=lambda item: (item[1], item[0]))]
+
+
+def _stacked_count_chart(
+    counts: dict[tuple[str, str], int],
+    labels: list[str],
+    series_order: list[str],
+) -> dict[str, Any]:
+    return {
+        "labels": labels,
+        "datasets": [
+            {
+                "label": serie,
+                "data": [counts.get((label, serie), 0) for label in labels],
+            }
+            for serie in series_order
+        ],
+    }
+
+
+def _build_distribution_charts(records: list[dict[str, Any]]) -> dict[str, Any]:
+    severity_order = ["SIN BAJA", "LEVE", "MODERADA", "GRAVE", "MUY GRAVE", "N/A"]
+    severity_counts: dict[tuple[str, str], int] = {}
+    for record in records:
+        tipo = str(record.get("tipo_lesion") or "N/A").strip() or "N/A"
+        severity = _severity_label(record)
+        severity_counts[(tipo, severity)] = severity_counts.get((tipo, severity), 0) + 1
+    severity_labels = _ordered_categories_from_counts(severity_counts)
+
+    lugar_counts = _category_counts(records, "lugar", "mecanismo")
+    lugar_labels = sorted({key[0] for key in lugar_counts})
+    mecanismos = sorted({key[1] for key in lugar_counts})
+
+    recidiva_counts: dict[tuple[str, str], int] = {}
+    for record in records:
+        tipo = str(record.get("tipo_lesion") or "N/A").strip() or "N/A"
+        caso = "Recidiva" if record.get("es_recidiva") else "Nueva"
+        recidiva_counts[(tipo, caso)] = recidiva_counts.get((tipo, caso), 0) + 1
+    recidiva_labels = _ordered_categories_from_counts(recidiva_counts)
+
+    return {
+        "tipo_severidad": _stacked_count_chart(severity_counts, severity_labels, severity_order),
+        "lugar_mecanismo": _stacked_count_chart(lugar_counts, lugar_labels, mecanismos),
+        "tipo_recidiva": _stacked_count_chart(recidiva_counts, recidiva_labels, ["Nueva", "Recidiva"]),
+    }
+
+
+ZONA_COLOR_MAP = {
+    "CARA": "#76b7eb",
+    "CRÁNEO": "#9ecae1",
+    "CRANEO": "#9ecae1",
+    "COLUMNA CERVICAL": "#8c564b",
+    "COLUMNA DORSAL": "#2ca89c",
+    "TÓRAX": "#f39c12",
+    "TORAX": "#f39c12",
+    "COLUMNA LUMBAR": "#7f7f7f",
+    "PÉLVIS": "#9467bd",
+    "PELVIS": "#9467bd",
+    "CINTURA ESCAPULAR Y HOMBRO": "#ff2b2b",
+    "BRAZO": "#1f77b4",
+    "CODO": "#f2a7a7",
+    "ANTEBRAZO": "#17becf",
+    "MUÑECA": "#bcbd22",
+    "MUNECA": "#bcbd22",
+    "MANO": "#e377c2",
+    "CADERA": "#4e79a7",
+    "MUSLO": "#6bdc8b",
+    "RODILLA": "#59a14f",
+    "PIERNA": "#8cd17d",
+    "TOBILLO": "#6f42c1",
+    "PIE": "#f4c95d",
+    "N/A": "#95a5a6",
+}
+
+
+def _color_for_category(value: str, index: int) -> str:
+    fallback = ["#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f", "#edc948", "#b07aa1", "#ff9da7", "#9c755f", "#bab0ab"]
+    return ZONA_COLOR_MAP.get(value.upper(), fallback[index % len(fallback)])
+
+
+def _build_days_by_type_zone(records: list[dict[str, Any]]) -> dict[str, Any]:
+    totals: dict[tuple[str, str], float] = {}
+    for record in records:
+        tipo = str(record.get("tipo_lesion") or "N/A").strip() or "N/A"
+        zona = str(record.get("zona_cuerpo") or "N/A").strip() or "N/A"
+        totals[(tipo, zona)] = totals.get((tipo, zona), 0) + (to_float(record.get("dias_baja_estimado")) or 0)
+
+    label_totals: dict[str, float] = {}
+    for (tipo, _zona), value in totals.items():
+        label_totals[tipo] = label_totals.get(tipo, 0) + value
+    labels = [key for key, _ in sorted(label_totals.items(), key=lambda item: (item[1], item[0]))]
+    zonas = sorted({zona for _, zona in totals})
+    return {
+        "labels": labels,
+        "datasets": [
+            {
+                "label": zona,
+                "data": [round(totals.get((label, zona), 0), 1) for label in labels],
+                "backgroundColor": _color_for_category(zona, index),
+            }
+            for index, zona in enumerate(zonas)
+        ],
+    }
+
+
+def _build_specific_zone_detail(
+    records: list[dict[str, Any]],
+    tipo_selected: str | None = None,
+    zona_selected: str | None = None,
+) -> dict[str, Any]:
+    filtered = list(records)
+    if tipo_selected:
+        filtered = [record for record in filtered if str(record.get("tipo_lesion") or "").strip() == tipo_selected]
+    if zona_selected:
+        filtered = [record for record in filtered if str(record.get("zona_cuerpo") or "").strip() == zona_selected]
+
+    totals: dict[tuple[str, str], float] = {}
+    for record in filtered:
+        zona_especifica = str(record.get("zona_especifica") or "N/A").strip() or "N/A"
+        zona = str(record.get("zona_cuerpo") or "N/A").strip() or "N/A"
+        totals[(zona_especifica, zona)] = totals.get((zona_especifica, zona), 0) + (to_float(record.get("dias_baja_estimado")) or 0)
+
+    label_totals: dict[str, float] = {}
+    label_zone: dict[str, str] = {}
+    for (zona_especifica, zona), value in totals.items():
+        label_totals[zona_especifica] = label_totals.get(zona_especifica, 0) + value
+        label_zone.setdefault(zona_especifica, zona)
+    labels = [key for key, _ in sorted(label_totals.items(), key=lambda item: (item[1], item[0]))]
+    return {
+        "labels": labels,
+        "values": [round(label_totals[label], 1) for label in labels],
+        "colors": [_color_for_category(label_zone.get(label, "N/A"), index) for index, label in enumerate(labels)],
+    }
+
+
+def _build_impact_charts(
+    records: list[dict[str, Any]],
+    tipo_selected: str | None = None,
+    zona_selected: str | None = None,
+) -> dict[str, Any]:
+    tipo_options = _unique_options(records, "tipo_lesion")
+    zona_options = _unique_options(records, "zona_cuerpo")
+    if tipo_selected and tipo_selected not in tipo_options:
+        tipo_selected = None
+    if zona_selected and zona_selected not in zona_options:
+        zona_selected = None
+
+    return {
+        "tipo_zona": _build_days_by_type_zone(records),
+        "detalle": _build_specific_zone_detail(records, tipo_selected=tipo_selected, zona_selected=zona_selected),
+        "filters": {
+            "tipo": tipo_selected or "",
+            "zona": zona_selected or "",
+            "tipos": tipo_options,
+            "zonas": zona_options,
+        },
+    }
+
+
+def _build_players_scatter(records: list[dict[str, Any]]) -> dict[str, Any]:
+    players: dict[str, dict[str, Any]] = {}
+    for record in records:
+        player = str(record.get("nombre_jugadora") or "N/A").strip() or "N/A"
+        item = players.setdefault(player, {"jugadora": player, "total_lesiones": 0, "dias_baja": 0.0})
+        item["total_lesiones"] += 1
+        item["dias_baja"] += to_float(record.get("dias_baja_estimado")) or 0
+
+    rows = sorted(players.values(), key=lambda item: (item["total_lesiones"], item["dias_baja"], item["jugadora"]))
+    return {
+        "points": [
+            {
+                "x": item["total_lesiones"],
+                "y": round(item["dias_baja"], 1),
+                "jugadora": item["jugadora"],
+            }
+            for item in rows
+        ]
+    }
+
+
+def _build_specific_type_heatmap(records: list[dict[str, Any]]) -> dict[str, Any]:
+    counts: dict[tuple[str, str], int] = {}
+    for record in records:
+        tipo = str(record.get("tipo_lesion") or "N/A").strip() or "N/A"
+        tipo_especifico = str(record.get("tipo_especifico") or "N/A").strip() or "N/A"
+        counts[(tipo, tipo_especifico)] = counts.get((tipo, tipo_especifico), 0) + 1
+
+    type_totals: dict[str, int] = {}
+    specific_totals: dict[str, int] = {}
+    for (tipo, tipo_especifico), total in counts.items():
+        type_totals[tipo] = type_totals.get(tipo, 0) + total
+        specific_totals[tipo_especifico] = specific_totals.get(tipo_especifico, 0) + total
+
+    types = [key for key, _ in sorted(type_totals.items(), key=lambda item: (-item[1], item[0]))]
+    specifics = [key for key, _ in sorted(specific_totals.items(), key=lambda item: (-item[1], item[0]))]
+    max_value = max(counts.values(), default=0)
+    rows = []
+    for tipo in types:
+        cells = []
+        for tipo_especifico in specifics:
+            value = counts.get((tipo, tipo_especifico), 0)
+            intensity = value / max_value if max_value else 0
+            cells.append({
+                "tipo_especifico": tipo_especifico,
+                "value": value,
+                "intensity": round(intensity, 3),
+            })
+        rows.append({"tipo_lesion": tipo, "cells": cells})
+
+    return {
+        "types": types,
+        "specifics": specifics,
+        "rows": rows,
+        "max_value": max_value,
+    }
+
+
+def _build_recurrence_type_heatmap(records: list[dict[str, Any]]) -> dict[str, Any]:
+    counts: dict[tuple[str, str], int] = {}
+    for record in records:
+        if not record.get("es_recidiva"):
+            continue
+        tipo_recidiva = str(record.get("tipo_recidiva") or "").strip().upper()
+        if not tipo_recidiva:
+            continue
+        tipo = str(record.get("tipo_lesion") or "N/A").strip() or "N/A"
+        counts[(tipo, tipo_recidiva)] = counts.get((tipo, tipo_recidiva), 0) + 1
+
+    type_totals: dict[str, int] = {}
+    for (tipo, _tipo_recidiva), total in counts.items():
+        type_totals[tipo] = type_totals.get(tipo, 0) + total
+
+    types = [key for key, _ in sorted(type_totals.items(), key=lambda item: (-item[1], item[0]))]
+    recurrence_order = ["TEMPRANA (≤ 2 MESES)", "TARDÍA (2-12 MESES)"]
+    present_recurrences = sorted({tipo_recidiva for _, tipo_recidiva in counts})
+    recurrences = [item for item in recurrence_order if item in present_recurrences]
+    recurrences.extend(item for item in present_recurrences if item not in recurrences)
+
+    max_value = max(counts.values(), default=0)
+    rows = []
+    for tipo in types:
+        cells = []
+        for tipo_recidiva in recurrences:
+            value = counts.get((tipo, tipo_recidiva), 0)
+            intensity = value / max_value if max_value else 0
+            cells.append({
+                "tipo_recidiva": tipo_recidiva,
+                "value": value,
+                "intensity": round(intensity, 3),
+            })
+        rows.append({"tipo_lesion": tipo, "cells": cells})
+
+    return {
+        "types": types,
+        "recurrences": recurrences,
+        "rows": rows,
+        "max_value": max_value,
+    }
+
+
+def _sort_records_by_injury_date(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        records,
+        key=lambda record: (record.get("fecha_lesion") is not None, record.get("fecha_lesion")),
+        reverse=True,
+    )
+
+
+def _build_groupal_table_context(
+    records: list[dict[str, Any]],
+    estado_selected: str | None = None,
+    severidad_selected: str | None = None,
+) -> dict[str, Any]:
+    estado_options = _unique_options(records, "estado_lesion")
+    raw_severities = {
+        _severity_label(record)
+        for record in records
+        if _severity_label(record)
+    }
+    severity_order = ["SIN BAJA", "LEVE", "MODERADA", "GRAVE", "MUY GRAVE", "N/A"]
+    severity_values = [value for value in severity_order if value in raw_severities]
+    severity_values.extend(sorted(value for value in raw_severities if value not in severity_values))
+
+    if estado_selected and estado_selected not in estado_options:
+        estado_selected = None
+    if severidad_selected and severidad_selected not in severity_values:
+        severidad_selected = None
+
+    filtered = list(records)
+    if estado_selected:
+        filtered = [
+            record for record in filtered
+            if str(record.get("estado_lesion") or "").strip() == estado_selected
+        ]
+    if severidad_selected:
+        filtered = [
+            record for record in filtered
+            if _severity_label(record) == severidad_selected
+        ]
+
+    return {
+        "records": _sort_records_by_injury_date(filtered)[:200],
+        "filters": {
+            "estado": estado_selected or "",
+            "severidad": severidad_selected or "",
+            "estados": estado_options,
+            "severidades": severity_values,
+        },
+    }
+
+
+def _resolve_groupal_period(
+    records: list[dict[str, Any]],
+    period: str,
+    custom_start: date | None = None,
+    custom_end: date | None = None,
+) -> tuple[list[dict[str, Any]], str, date | None, date | None]:
+    dated = [record for record in records if record.get("fecha_lesion")]
+    if not dated:
+        return [], "", None, None
+
+    min_date = min(record["fecha_lesion"] for record in dated)
+    max_date = max(record["fecha_lesion"] for record in dated)
+    today = datetime.today().date()
+    ref = max_date
+
+    if period == "semana":
+        start = ref - timedelta(days=ref.weekday())
+        end = min(start + timedelta(days=6), ref)
+    elif period == "mes":
+        start = ref.replace(day=1)
+        end = ref
+    elif period == "ultimos_3_meses":
+        end = today
+        start = date(_month_add(end, -2).year, _month_add(end, -2).month, 1)
+    elif period == "ultimos_6_meses":
+        end = today
+        start = date(_month_add(end, -5).year, _month_add(end, -5).month, 1)
+    elif period == "temporada":
+        start = TEMPORADA_START
+        end = today
+    elif period == "todo":
+        start = min_date
+        end = max_date
+    elif period == "personalizado":
+        start = custom_start or min_date
+        end = custom_end or max_date
+    else:
+        start = ref.replace(day=1)
+        end = ref
+
+    start = max(start, min_date)
+    end = min(end, today)
+    if start > end:
+        start = min_date
+        end = min(ref, today)
+
+    filtered = [
+        record for record in dated
+        if start <= record["fecha_lesion"] <= end
+    ]
+    label = f"{start.strftime('%d/%m/%Y')} - {end.strftime('%d/%m/%Y')}"
+    return filtered, label, start, end
+
+
+def _previous_groupal_period(
+    base_records: list[dict[str, Any]],
+    period: str,
+    start: date | None,
+    end: date | None,
+) -> list[dict[str, Any]] | None:
+    if not start or not end or period not in {"semana", "mes", "ultimos_3_meses", "ultimos_6_meses"}:
+        return None
+
+    if period == "semana":
+        prev_start = start - timedelta(days=7)
+        prev_end = end - timedelta(days=7)
+    elif period == "mes":
+        prev_end = start - timedelta(days=1)
+        prev_start = prev_end.replace(day=1)
+    else:
+        months = 3 if period == "ultimos_3_meses" else 6
+        prev_end = start - timedelta(days=1)
+        prev_start_anchor = _month_add(prev_end, -(months - 1))
+        prev_start = date(prev_start_anchor.year, prev_start_anchor.month, 1)
+
+    return [
+        record for record in base_records
+        if record.get("fecha_lesion") and prev_start <= record["fecha_lesion"] <= prev_end
+    ]
 
 
 def build_lesiones_grupal_context(
     plantel: str | None = None,
     posicion: str | None = None,
     tipo: str | None = None,
-    period: str = "semana",
+    period: str = "mes",
+    start_date: str | None = None,
+    end_date: str | None = None,
+    impact_tipo: str | None = None,
+    impact_zona: str | None = None,
+    registro_estado: str | None = None,
+    registro_severidad: str | None = None,
+    active_tab: str = "evolucion",
 ) -> dict[str, Any]:
-    if period not in {"semana", "mes", "temporada"}:
-        period = "semana"
+    if period not in {"semana", "mes", "ultimos_3_meses", "ultimos_6_meses", "temporada", "todo", "personalizado"}:
+        period = "mes"
+    if active_tab not in {"evolucion", "distribucion", "impacto", "jugadoras", "tipo-especifico", "recidivas", "registros"}:
+        active_tab = "evolucion"
 
     selected_plantel = plantel or DEFAULT_PLANTEL
     user_filter_sql, user_params = _build_user_access_filter()
@@ -588,22 +1137,48 @@ def build_lesiones_grupal_context(
     )
 
     position_options = _unique_options(plantel_records, "posicion")
+    if posicion and posicion not in position_options:
+        posicion = None
+
     records_after_position = _filter_groupal_records(plantel_records, posicion=posicion)
     type_options = _unique_options(records_after_position, "tipo_lesion")
+    if tipo and tipo not in type_options:
+        tipo = None
+
     base_records = _filter_groupal_records(plantel_records, posicion=posicion, tipo=tipo)
-    period_records, period_label, start_date, end_date = _period_filter_with_bounds(base_records, period)
+    custom_start = _parse_date_param(start_date)
+    custom_end = _parse_date_param(end_date)
+    period_records, period_label, resolved_start, resolved_end = _resolve_groupal_period(
+        base_records,
+        period,
+        custom_start=custom_start,
+        custom_end=custom_end,
+    )
+    previous_records = _previous_groupal_period(base_records, period, resolved_start, resolved_end)
+    table_context = _build_groupal_table_context(
+        period_records,
+        estado_selected=registro_estado,
+        severidad_selected=registro_severidad,
+    )
 
     return {
         "competitions": competitions,
         "plantel": selected_plantel,
         "period": period,
         "period_label": period_label,
-        "start_date": start_date,
-        "end_date": end_date,
+        "active_tab": active_tab,
+        "start_date": resolved_start,
+        "end_date": resolved_end,
+        "custom_start": custom_start or resolved_start,
+        "custom_end": custom_end or resolved_end,
         "period_options": [
             {"key": "semana", "label": "Semana"},
             {"key": "mes", "label": "Mes"},
+            {"key": "ultimos_3_meses", "label": "Ultimos 3 meses"},
+            {"key": "ultimos_6_meses", "label": "Ultimos 6 meses"},
             {"key": "temporada", "label": "Temporada"},
+            {"key": "todo", "label": "Todo"},
+            {"key": "personalizado", "label": "Personalizado"},
         ],
         "filters": {
             "posicion": posicion or "",
@@ -611,12 +1186,22 @@ def build_lesiones_grupal_context(
             "posiciones": position_options,
             "tipos": type_options,
         },
-        "kpis": _build_groupal_kpis(period_records, base_records),
-        "records": period_records[:200],
+        "kpis": _build_groupal_kpis(period_records, base_records, previous_records=previous_records),
+        "records": table_context["records"],
+        "record_filters": table_context["filters"],
         "all_records_count": len(plantel_records),
         "filtered_records_count": len(base_records),
         "period_records_count": len(period_records),
-        "evolution_chart": _build_evolution_summary_chart(period_records, period),
+        "evolution_charts": _build_evolution_charts(period_records, resolved_start, resolved_end),
+        "distribution_charts": _build_distribution_charts(period_records),
+        "impact_charts": _build_impact_charts(
+            period_records,
+            tipo_selected=impact_tipo,
+            zona_selected=impact_zona,
+        ),
+        "players_scatter": _build_players_scatter(period_records),
+        "specific_type_heatmap": _build_specific_type_heatmap(period_records),
+        "recurrence_type_heatmap": _build_recurrence_type_heatmap(period_records),
     }
 
 

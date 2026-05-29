@@ -32,7 +32,14 @@ def grupal():
         plantel=request.args.get("plantel") or None,
         posicion=request.args.get("posicion") or None,
         tipo=request.args.get("tipo") or None,
-        period=request.args.get("period") or "semana",
+        period=request.args.get("period") or "mes",
+        start_date=request.args.get("start_date") or None,
+        end_date=request.args.get("end_date") or None,
+        impact_tipo=request.args.get("impact_tipo") or None,
+        impact_zona=request.args.get("impact_zona") or None,
+        registro_estado=request.args.get("registro_estado") or None,
+        registro_severidad=request.args.get("registro_severidad") or None,
+        active_tab=request.args.get("active_tab") or "evolucion",
     )
     return render_template("dashboard/lesiones/grupal.html", **context)
 
