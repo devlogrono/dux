@@ -52,5 +52,8 @@ def individual():
         posicion=request.args.get("posicion") or None,
         jugadora=request.args.get("jugadora") or None,
         tipo=request.args.get("tipo") or None,
+        impact_tipo=request.args.get("impact_tipo") or None,
+        impact_zona=request.args.get("impact_zona") or None,
+        active_tab=request.args.get("active_tab") or "historial",
     )
     return render_template("dashboard/lesiones/individual.html", **context)

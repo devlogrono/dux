@@ -5,15 +5,38 @@ from datetime import date, datetime
 from typing import Any
 
 
+POSITION_OPTIONS = ["Portera", "Defensa", "Centro", "Delantera"]
+
 MAP_POSICIONES = {
     "POR": "Portera",
-    "DEF": "Defensa",
-    "DEL": "Delantera",
     "PO": "Portera",
+    "GK": "Portera",
+    "PORTERA": "Portera",
+    "DEF": "Defensa",
     "DF": "Defensa",
+    "DEFENSA": "Defensa",
     "MC": "Centro",
+    "MED": "Centro",
+    "CENTRO": "Centro",
+    "CENTROCAMPISTA": "Centro",
+    "MEDIOCAMPISTA": "Centro",
+    "DEL": "Delantera",
     "DL": "Delantera",
+    "FW": "Delantera",
+    "FWD": "Delantera",
+    "DC": "Delantera",
+    "DELANTERA": "Delantera",
+    "ATACANTE": "Delantera",
 }
+
+
+def normalize_position(value: Any) -> str:
+    if value is None:
+        return ""
+    raw_value = str(value).strip()
+    if not raw_value:
+        return ""
+    return MAP_POSICIONES.get(raw_value.upper(), raw_value)
 
 
 def coerce_date(value: Any) -> date | None:
@@ -77,9 +100,7 @@ def normalize_record(record: dict[str, Any]) -> dict[str, Any]:
     item["es_recidiva"] = is_truthy(item.get("es_recidiva"))
     item["sesiones"] = contar_sesiones(item.get("evolucion"))
 
-    posicion = item.get("posicion")
-    if posicion in MAP_POSICIONES:
-        item["posicion"] = MAP_POSICIONES[posicion]
+    item["posicion"] = normalize_position(item.get("posicion"))
 
     estado = item.get("estado_lesion")
     item["estado_lesion"] = str(estado).strip().upper() if estado else ""

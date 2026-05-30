@@ -19,24 +19,44 @@
     font-weight: 800;
   }
 
-  .player-photo {
-    width: 160px;
-    height: 200px;
-    object-fit: cover;
-    border-radius: .5rem;
-    background: #e5e7eb;
+  .player-header {
+    min-height: 280px;
   }
 
-  .player-photo-placeholder {
-    width: 160px;
-    height: 200px;
-    border-radius: .5rem;
-    background: #e5e7eb;
-    color: #6b7280;
+  .player-media {
+    width: min(100%, 260px);
+  }
+
+  .player-photo,
+  .player-avatar {
+    width: 100%;
+    height: clamp(220px, 28vw, 260px);
+    border-radius: 1rem;
+  }
+
+  .player-photo {
+    object-fit: cover;
+    background: #f1f5f9;
+    box-shadow: 0 14px 32px rgba(15, 23, 42, .18);
+  }
+
+  .player-avatar {
     display: grid;
     place-items: center;
-    font-size: 3rem;
+    background: #f1f5f9;
+    color: #0f172a;
+    font-size: 4rem;
     font-weight: 800;
+    box-shadow: inset 0 0 0 1px rgba(15, 23, 42, .08);
+  }
+
+  .player-name {
+    font-size: clamp(1.7rem, 3vw, 2.45rem);
+    line-height: 1.1;
+  }
+
+  .player-meta-grid {
+    row-gap: 1rem;
   }
 
   .metric-card {
@@ -80,8 +100,27 @@
     overflow-wrap: anywhere;
   }
 
+  @media (max-width: 767.98px) {
+    .player-header {
+      min-height: auto;
+    }
+
+    .player-media {
+      width: min(78vw, 240px);
+    }
+
+    .player-photo,
+    .player-avatar {
+      height: min(78vw, 240px);
+    }
+  }
+
   .tab-pane-shell {
     min-height: 260px;
+  }
+
+  .chart-panel {
+    min-height: 400px;
   }
 
   .status-pill {
@@ -133,9 +172,10 @@
 
   <section class="lesiones-panel p-4 mb-4">
     <form method="get" class="row g-3 align-items-end">
+      <input type="hidden" name="active_tab" value="{{ active_tab }}">
       <div class="col-12 col-md-3">
         <label for="plantel" class="form-label">Plantel</label>
-        <select id="plantel" name="plantel" class="form-select">
+        <select id="plantel" name="plantel" class="form-select" onchange="this.form.submit()">
           {% for competition in competitions %}
             <option value="{{ competition.codigo }}" {% if plantel == competition.codigo|string %}selected{% endif %}>
               {{ competition.nombre }}{% if competition.codigo %} ({{ competition.codigo }}){% endif %}
@@ -146,7 +186,7 @@
 
       <div class="col-12 col-md-2">
         <label for="posicion" class="form-label">Posicion</label>
-        <select id="posicion" name="posicion" class="form-select">
+        <select id="posicion" name="posicion" class="form-select" onchange="this.form.submit()">
           <option value="">Todas</option>
           {% for option in filters.posiciones %}
             <option value="{{ option }}" {% if filters.posicion == option %}selected{% endif %}>{{ option }}</option>
@@ -156,7 +196,10 @@
 
       <div class="col-12 col-md-3">
         <label for="jugadora" class="form-label">Jugadora</label>
-        <select id="jugadora" name="jugadora" class="form-select">
+        <select id="jugadora" name="jugadora" class="form-select" onchange="this.form.submit()">
+          {% if not filters.jugadoras %}
+            <option value="">Sin jugadoras</option>
+          {% endif %}
           {% for option in filters.jugadoras %}
             <option value="{{ option.id }}" {% if filters.jugadora == option.id %}selected{% endif %}>{{ option.nombre }}</option>
           {% endfor %}
@@ -165,7 +208,7 @@
 
       <div class="col-12 col-md-2">
         <label for="tipo" class="form-label">Tipo de lesion</label>
-        <select id="tipo" name="tipo" class="form-select">
+        <select id="tipo" name="tipo" class="form-select" onchange="this.form.submit()">
           <option value="">Todas</option>
           {% for option in filters.tipos %}
             <option value="{{ option }}" {% if filters.tipo == option %}selected{% endif %}>{{ option }}</option>
@@ -186,64 +229,59 @@
     </section>
   {% else %}
     <section class="lesiones-panel p-4 mb-4">
-      <div class="row g-4 align-items-stretch">
+      <div class="row g-4 g-xl-5 align-items-center player-header">
         <div class="col-12 col-lg-auto">
-          {% if player.has_photo %}
-            <img
-              class="player-photo"
-              src="{{ url_for('dashboard_physical.player_photo', identificacion=player.identificacion) }}"
-              alt="{{ player.nombre }}"
-              onerror="this.style.display='none'; this.nextElementSibling.classList.remove('d-none');"
-            >
-            <div class="player-photo-placeholder d-none">{{ player.nombre[:1] }}</div>
-          {% else %}
-            <div class="player-photo-placeholder">{{ player.nombre[:1] }}</div>
-          {% endif %}
-        </div>
-        <div class="col">
-          <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-            <h2 class="lesiones-title mb-0">{{ player.nombre }}</h2>
-            {% if player.dorsal %}
-              <span class="badge bg-dark">#{{ player.dorsal }}</span>
+          <div class="player-media mx-auto mx-lg-0">
+            {% if player.has_photo %}
+              <img
+                class="player-photo"
+                src="{{ url_for('dashboard_physical.player_photo', identificacion=player.identificacion) }}"
+                alt="{{ player.nombre }}"
+                onerror="this.classList.add('d-none'); this.nextElementSibling.classList.remove('d-none');"
+              >
+              <div class="player-avatar d-none">{{ player.initial }}</div>
+            {% else %}
+              <div class="player-avatar">{{ player.initial }}</div>
             {% endif %}
           </div>
-          <div class="row g-3">
-            <div class="col-6 col-md-4 col-xl-3">
-              <div class="metric-card p-3">
+        </div>
+        <div class="col-12 col-lg">
+          <div>
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+            <h2 class="lesiones-title player-name mb-0">{{ player.nombre }}</h2>
+            {% if player.dorsal %}
+              <span class="badge text-bg-danger">Dorsal #{{ player.dorsal }}</span>
+            {% endif %}
+          </div>
+          <div class="row g-3 player-meta-grid">
+            <div class="col-12 col-md-4">
                 <div class="info-label">Identificacion</div>
                 <div class="info-value">{{ player.identificacion }}</div>
-              </div>
             </div>
-            <div class="col-6 col-md-4 col-xl-3">
-              <div class="metric-card p-3">
+            <div class="col-12 col-md-4">
                 <div class="info-label">Pais</div>
                 <div class="info-value">{{ player.pais }}</div>
-              </div>
             </div>
-            <div class="col-6 col-md-4 col-xl-3">
-              <div class="metric-card p-3">
+            <div class="col-12 col-md-4">
                 <div class="info-label">Plantel</div>
                 <div class="info-value">{{ player.plantel }}</div>
-              </div>
             </div>
-            <div class="col-6 col-md-4 col-xl-3">
-              <div class="metric-card p-3">
+            <div class="col-12 col-md-4">
                 <div class="info-label">Posicion</div>
                 <div class="info-value">{{ player.posicion }}</div>
-              </div>
             </div>
-            <div class="col-6 col-md-4 col-xl-3">
-              <div class="metric-card p-3">
+            <div class="col-12 col-md-4">
                 <div class="info-label">Fecha nacimiento</div>
                 <div class="info-value">{{ player.fecha_nacimiento.strftime('%Y-%m-%d') if player.fecha_nacimiento else "-" }}</div>
-              </div>
             </div>
-            <div class="col-6 col-md-4 col-xl-3">
-              <div class="metric-card p-3">
+            <div class="col-12 col-md-4">
                 <div class="info-label">Edad</div>
-                <div class="info-value">{{ player.edad if player.edad is not none else "-" }}</div>
-              </div>
+                <div class="info-value">{% if player.edad is not none %}{{ player.edad }} anos{% else %}-{% endif %}</div>
             </div>
+          </div>
+          <div class="small text-muted mt-3">
+            {{ player_records_count }} lesiones registradas para la jugadora antes de aplicar tipo de lesion.
+          </div>
           </div>
         </div>
       </div>
@@ -280,14 +318,14 @@
         ] %}
           <li class="nav-item" role="presentation">
             <button
-              class="nav-link {% if loop.first %}active{% endif %}"
+              class="nav-link {% if active_tab == tab[0] %}active{% endif %}"
               id="{{ tab[0] }}-tab"
               data-bs-toggle="tab"
               data-bs-target="#{{ tab[0] }}"
               type="button"
               role="tab"
               aria-controls="{{ tab[0] }}"
-              aria-selected="{{ 'true' if loop.first else 'false' }}"
+              aria-selected="{{ 'true' if active_tab == tab[0] else 'false' }}"
             >
               {{ tab[1] }}
             </button>
@@ -296,30 +334,141 @@
       </ul>
 
       <div class="tab-content pt-4">
-        <div class="tab-pane fade show active tab-pane-shell" id="historial" role="tabpanel" aria-labelledby="historial-tab">
-          {% if history_chart.labels %}
-            <h2 class="h5 lesiones-title mb-3">Evolucion temporal de lesiones con baja</h2>
-            <div class="position-relative" style="height:360px;">
-              <canvas
-                id="historialLesionesChart"
-                data-labels='{{ history_chart.labels | tojson }}'
-                data-dias='{{ history_chart.dias | tojson }}'
-                data-tipos='{{ history_chart.tipos | tojson }}'
-                data-gravedad='{{ history_chart.gravedad | tojson }}'
-              ></canvas>
-            </div>
+        <div class="tab-pane fade {% if active_tab == 'historial' %}show active{% endif %} tab-pane-shell" id="historial" role="tabpanel" aria-labelledby="historial-tab">
+          {% if history_chart.points %}
+            <h2 class="h5 lesiones-title mb-3">Evoluci&oacute;n temporal de lesiones con baja</h2>
+            <div id="historialLesionesChart" class="chart-panel"></div>
           {% else %}
-            <div class="alert alert-info mb-0">No hay datos suficientes para mostrar el historial.</div>
+            <div class="alert alert-info mb-0">Sin datos suficientes.</div>
           {% endif %}
         </div>
 
-        {% for tab_id in ['distribucion', 'impacto', 'tratamientos', 'tipo-especifico', 'recidivas'] %}
-          <div class="tab-pane fade tab-pane-shell" id="{{ tab_id }}" role="tabpanel" aria-labelledby="{{ tab_id }}-tab">
-            <div class="alert alert-secondary mb-0">Pendiente de migrar.</div>
+        <div class="tab-pane fade {% if active_tab == 'distribucion' %}show active{% endif %} tab-pane-shell" id="distribucion" role="tabpanel" aria-labelledby="distribucion-tab">
+          <div class="row g-4">
+            <div class="col-12">
+              <h2 class="h5 lesiones-title mb-3">Tipo de lesi&oacute;n por severidad</h2>
+              {% if distribution_charts.tipo_severidad.labels %}
+                <div id="individualTipoSeveridadChart" class="chart-panel"></div>
+              {% else %}
+                <div class="alert alert-info mb-0">Sin datos suficientes.</div>
+              {% endif %}
+            </div>
+            <div class="col-12">
+              <h2 class="h5 lesiones-title mb-3">Lugar de ocurrencia por mecanismo</h2>
+              {% if distribution_charts.lugar_mecanismo.labels %}
+                <div id="individualLugarMecanismoChart" class="chart-panel"></div>
+              {% else %}
+                <div class="alert alert-info mb-0">Sin datos suficientes.</div>
+              {% endif %}
+            </div>
           </div>
-        {% endfor %}
+        </div>
 
-        <div class="tab-pane fade tab-pane-shell" id="registros" role="tabpanel" aria-labelledby="registros-tab">
+        <div class="tab-pane fade {% if active_tab == 'impacto' %}show active{% endif %} tab-pane-shell" id="impacto" role="tabpanel" aria-labelledby="impacto-tab">
+          {% if impact_charts.tipo_zona.labels %}
+            <h2 class="h5 lesiones-title mb-3">D&iacute;as de baja acumulados por tipo de lesi&oacute;n y zona corporal</h2>
+            <div id="individualImpactoTipoZonaChart" class="chart-panel mb-4"></div>
+
+            <form method="get" class="row g-3 align-items-end mb-3" action="{{ url_for('dashboard_lesiones.individual') }}#individual-impacto-detalle">
+              <input type="hidden" name="plantel" value="{{ plantel }}">
+              <input type="hidden" name="posicion" value="{{ filters.posicion }}">
+              <input type="hidden" name="jugadora" value="{{ filters.jugadora }}">
+              <input type="hidden" name="tipo" value="{{ filters.tipo }}">
+              <input type="hidden" name="active_tab" value="impacto">
+
+              <div class="col-12 col-md-6">
+                <label for="impact_tipo" class="form-label">Tipo de lesion</label>
+                <select id="impact_tipo" name="impact_tipo" class="form-select" onchange="this.form.submit()">
+                  <option value="">Todas</option>
+                  {% for option in impact_charts.filters.tipos %}
+                    <option value="{{ option }}" {% if impact_charts.filters.tipo == option %}selected{% endif %}>{{ option }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <div class="col-12 col-md-6">
+                <label for="impact_zona" class="form-label">Zona corporal</label>
+                <select id="impact_zona" name="impact_zona" class="form-select" onchange="this.form.submit()">
+                  <option value="">Todas</option>
+                  {% for option in impact_charts.filters.zonas %}
+                    <option value="{{ option }}" {% if impact_charts.filters.zona == option %}selected{% endif %}>{{ option }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </form>
+
+            <div id="individual-impacto-detalle" style="scroll-margin-top: 1rem;"></div>
+            <h2 class="h5 lesiones-title mb-3">Detalle por zona espec&iacute;fica</h2>
+            {% if impact_charts.detalle.labels %}
+              <div id="individualImpactoDetalleChart" class="chart-panel"></div>
+            {% else %}
+              <div class="alert alert-info mb-0">Sin datos suficientes.</div>
+            {% endif %}
+          {% else %}
+            <div class="alert alert-info mb-0">Sin datos suficientes.</div>
+          {% endif %}
+        </div>
+
+        <div class="tab-pane fade {% if active_tab == 'tratamientos' %}show active{% endif %} tab-pane-shell" id="tratamientos" role="tabpanel" aria-labelledby="tratamientos-tab">
+          <h2 class="h5 lesiones-title mb-3">Relaci&oacute;n entre tipo de lesi&oacute;n, zona y tratamiento</h2>
+          {% if treatment_chart.labels %}
+            <div id="individualTratamientosChart" class="chart-panel"></div>
+          {% else %}
+            <div class="alert alert-info mb-0">Sin datos suficientes.</div>
+          {% endif %}
+        </div>
+
+        <div class="tab-pane fade {% if active_tab == 'tipo-especifico' %}show active{% endif %} tab-pane-shell" id="tipo-especifico" role="tabpanel" aria-labelledby="tipo-especifico-tab">
+          <div class="row g-4">
+            <div class="col-12">
+              <h2 class="h5 lesiones-title mb-3">Relaci&oacute;n entre tipo de lesi&oacute;n y tipo espec&iacute;fico</h2>
+              {% if specific_type_heatmap.rows %}
+                <div id="individualTipoEspecificoHeatmap" class="chart-panel"></div>
+              {% else %}
+                <div class="alert alert-info mb-0">Sin datos suficientes.</div>
+              {% endif %}
+            </div>
+            <div class="col-12">
+              <h2 class="h5 lesiones-title mb-3">Relaci&oacute;n entre tipo de lesi&oacute;n y mecanismo</h2>
+              {% if specific_type_mechanism.labels %}
+                <div id="individualTipoMecanismoChart" class="chart-panel"></div>
+              {% else %}
+                <div class="alert alert-info mb-0">Sin datos suficientes.</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-pane fade {% if active_tab == 'recidivas' %}show active{% endif %} tab-pane-shell" id="recidivas" role="tabpanel" aria-labelledby="recidivas-tab">
+          <div class="row g-4">
+            <div class="col-12 col-xl-5">
+              <h2 class="h5 lesiones-title mb-3">Proporci&oacute;n de recidivas vs nuevas</h2>
+              {% if recurrence_charts.pie.labels %}
+                <div id="individualRecidivasPieChart" class="chart-panel"></div>
+              {% else %}
+                <div class="alert alert-info mb-0">Sin datos suficientes.</div>
+              {% endif %}
+            </div>
+            <div class="col-12 col-xl-7">
+              <h2 class="h5 lesiones-title mb-3">Relaci&oacute;n entre tipo de lesi&oacute;n y recidiva</h2>
+              {% if recurrence_charts.tipo_recidiva.labels %}
+                <div id="individualTipoRecidivaChart" class="chart-panel"></div>
+              {% else %}
+                <div class="alert alert-info mb-0">Sin datos suficientes.</div>
+              {% endif %}
+            </div>
+            <div class="col-12">
+              <h2 class="h5 lesiones-title mb-3">Recidivas tempranas y tard&iacute;as por tipo de lesi&oacute;n</h2>
+              {% if recurrence_charts.tipo_lesion_tipo_recidiva.rows %}
+                <div id="individualTipoLesionTipoRecidivaHeatmap" class="chart-panel"></div>
+              {% else %}
+                <div class="alert alert-info mb-0">Sin datos suficientes.</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-pane fade {% if active_tab == 'registros' %}show active{% endif %} tab-pane-shell" id="registros" role="tabpanel" aria-labelledby="registros-tab">
           {% if records %}
             <div class="table-responsive">
               <table class="table table-hover align-middle mb-0">
@@ -328,16 +477,19 @@
                     <th>ID lesion</th>
                     <th>Fecha lesion</th>
                     <th>Tipo lesion</th>
+                    <th>Tipo especifico</th>
                     <th>Zona corporal</th>
                     <th>Zona especifica</th>
-                    <th>Tipo especifico</th>
-                    <th>Recidiva</th>
-                    <th>Lugar</th>
                     <th>Mecanismo</th>
+                    <th>Lugar</th>
                     <th>Dias baja</th>
-                    <th>Severidad</th>
+                    <th>Gravedad</th>
+                    <th>Recidiva</th>
+                    <th>Tipo recidiva</th>
                     <th>Estado</th>
                     <th>Reporta</th>
+                    <th>Diagnostico</th>
+                    <th>Descripcion</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -346,14 +498,15 @@
                       <td>{{ record.id_lesion or "-" }}</td>
                       <td>{{ record.fecha_lesion.strftime('%Y-%m-%d') if record.fecha_lesion else "-" }}</td>
                       <td>{{ record.tipo_lesion or "-" }}</td>
+                      <td>{{ record.tipo_especifico or "-" }}</td>
                       <td>{{ record.zona_cuerpo or "-" }}</td>
                       <td>{{ record.zona_especifica or "-" }}</td>
-                      <td>{{ record.tipo_especifico or "-" }}</td>
-                      <td>{{ "Si" if record.es_recidiva else "No" }}</td>
-                      <td>{{ record.lugar or "-" }}</td>
                       <td>{{ record.mecanismo or "-" }}</td>
-                      <td>{{ record.dias_baja_estimado if record.dias_baja_estimado is not none else "-" }}</td>
+                      <td>{{ record.lugar or "-" }}</td>
+                      <td>{% if record.dias_baja_estimado is not none %}{{ "%.1f"|format(record.dias_baja_estimado) }}{% else %}-{% endif %}</td>
                       <td>{{ record.impacto_dias_baja_estimado or "-" }}</td>
+                      <td>{{ "S&iacute;"|safe if record.es_recidiva else "No" }}</td>
+                      <td>{{ record.tipo_recidiva or "-" }}</td>
                       <td>
                         {% set status = record.estado_lesion or "" %}
                         <span class="status-pill {% if status == 'ACTIVO' %}status-activo{% elif status == 'INACTIVO' %}status-inactivo{% else %}status-default{% endif %}">
@@ -361,6 +514,8 @@
                         </span>
                       </td>
                       <td>{{ record.personal_reporta or "-" }}</td>
+                      <td>{{ record.diagnostico or "-" }}</td>
+                      <td>{{ record.descripcion or "-" }}</td>
                     </tr>
                   {% endfor %}
                 </tbody>
@@ -378,53 +533,331 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-  const canvas = document.getElementById('historialLesionesChart');
-  if (!canvas || !window.Chart) return;
+  const historyChart = {{ (history_chart|default({}))|tojson }};
+  const distributionCharts = {{ (distribution_charts|default({}))|tojson }};
+  const impactCharts = {{ (impact_charts|default({}))|tojson }};
+  const treatmentChart = {{ (treatment_chart|default({}))|tojson }};
+  const specificTypeHeatmap = {{ (specific_type_heatmap|default({}))|tojson }};
+  const specificTypeMechanism = {{ (specific_type_mechanism|default({}))|tojson }};
+  const recurrenceCharts = {{ (recurrence_charts|default({}))|tojson }};
+  const severityColors = {
+    "SIN BAJA": "#92b1ce",
+    "LEVE": "#b7e4c7",
+    "MODERADA": "#f4d35e",
+    "GRAVE": "#ee924b",
+    "MUY GRAVE": "#d62828",
+    "N/A": "#9ca3af"
+  };
+  const pastelColors = ["#A1C9F4", "#FFB482", "#8DE5A1", "#FF9F9B", "#D0BBFF", "#DEBB9B", "#FAB0E4", "#CFCFCF"];
+  const softBlueScale = [
+    [0, "#f8fbff"],
+    [0.2, "#eaf3ff"],
+    [0.45, "#d5e8fb"],
+    [0.7, "#a9cfee"],
+    [1, "#6fa8dc"]
+  ];
 
-  const labels = JSON.parse(canvas.dataset.labels || '[]');
-  const dias = JSON.parse(canvas.dataset.dias || '[]');
-  const tipos = JSON.parse(canvas.dataset.tipos || '[]');
-  const gravedad = JSON.parse(canvas.dataset.gravedad || '[]');
-
-  new Chart(canvas.getContext('2d'), {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Dias de baja estimados',
-        data: dias,
-        borderColor: '#0d6efd',
-        backgroundColor: 'rgba(13, 110, 253, .16)',
-        pointBackgroundColor: '#dc3545',
-        pointRadius: 5,
-        tension: .25,
-        fill: true
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            afterLabel: function (context) {
-              const i = context.dataIndex;
-              return ['Tipo: ' + (tipos[i] || '-'), 'Gravedad: ' + (gravedad[i] || '-')];
-            }
-          }
-        }
-      },
-      scales: {
-        y: { beginAtZero: true, title: { display: true, text: 'Dias de baja' } },
-        x: { title: { display: true, text: 'Fecha de lesion' } }
-      }
+  function renderHistory() {
+    const chartEl = document.getElementById('historialLesionesChart');
+    const points = historyChart.points || [];
+    if (!chartEl || !window.Plotly || points.length === 0) {
+      return;
     }
+
+    const severities = ["SIN BAJA", "LEVE", "MODERADA", "GRAVE", "MUY GRAVE", "N/A"];
+    const traces = severities.map((severity) => {
+      const severityPoints = points.filter((point) => (point.impacto || "N/A") === severity);
+      return {
+        x: severityPoints.map((point) => point.fecha),
+        y: severityPoints.map((point) => point.dias_baja),
+        name: severity,
+        type: "scatter",
+        mode: "markers",
+        marker: {
+          color: severityColors[severity] || severityColors["N/A"],
+          size: severityPoints.map((point) => Math.max(16, Math.min(42, 16 + Number(point.dias_baja || 0) * 0.45))),
+          line: { width: 2, color: "white" },
+          opacity: 0.9
+        },
+        customdata: severityPoints.map((point) => [
+          point.tipo_lesion,
+          point.zona_cuerpo,
+          point.mecanismo,
+          point.descripcion
+        ]),
+        hovertemplate: "<b>%{customdata[0]}</b><br>Fecha: %{x}<br>D\u00edas de baja: %{y:.1f}<br>Zona: %{customdata[1]}<br>Mecanismo: %{customdata[2]}<br>Descripci\u00f3n: %{customdata[3]}<extra></extra>"
+      };
+    }).filter((trace) => trace.x.length > 0);
+
+    const shapes = points.map((point) => ({
+      type: "line",
+      xref: "x",
+      yref: "y",
+      x0: point.fecha,
+      x1: point.fecha,
+      y0: 0,
+      y1: point.dias_baja,
+      line: { color: "rgba(120,120,120,0.45)", width: 2 },
+      layer: "below"
+    }));
+
+    Plotly.newPlot(chartEl, traces, {
+      xaxis: { title: "Fecha de lesi\u00f3n", type: "date", gridcolor: "rgba(0,0,0,0.06)" },
+      yaxis: { title: "D\u00edas de baja estimados", rangemode: "tozero", gridcolor: "rgba(0,0,0,0.06)" },
+      template: "simple_white",
+      height: 430,
+      margin: { t: 24, b: 60, l: 56, r: 32 },
+      shapes,
+      legend: { orientation: "h", y: -0.22, x: 0.5, xanchor: "center" }
+    }, { responsive: true, displayModeBar: false });
+  }
+
+  function stackedBar(chartId, chartData, title, xTitle, yTitle, colors, horizontal) {
+    const chartEl = document.getElementById(chartId);
+    if (!chartEl || !window.Plotly || !chartData || !chartData.labels || chartData.labels.length === 0) {
+      return;
+    }
+
+    const datasets = chartData.datasets || [];
+    const hoverXTitle = xTitle || "Categor\u00eda";
+    const hoverYTitle = yTitle || "Categor\u00eda";
+    const traces = datasets.map((dataset, index) => ({
+      x: horizontal ? dataset.data : chartData.labels,
+      y: horizontal ? chartData.labels : dataset.data,
+      name: dataset.label,
+      type: "bar",
+      orientation: horizontal ? "h" : "v",
+      marker: { color: colors[dataset.label] || pastelColors[index % pastelColors.length] },
+      hovertemplate: horizontal
+        ? "<b>" + dataset.label + "</b><br>" + hoverYTitle + ": %{y}<br>" + hoverXTitle + ": %{x}<extra></extra>"
+        : "<b>" + dataset.label + "</b><br>" + hoverXTitle + ": %{x}<br>" + hoverYTitle + ": %{y}<extra></extra>"
+    }));
+
+    Plotly.newPlot(chartEl, traces, {
+      xaxis: { title: xTitle, rangemode: "tozero", automargin: true, gridcolor: "rgba(0,0,0,0.06)" },
+      yaxis: { title: yTitle, automargin: true, gridcolor: "rgba(0,0,0,0.06)" },
+      barmode: "stack",
+      template: "simple_white",
+      height: horizontal ? 480 : 420,
+      margin: horizontal ? { t: 24, b: 70, l: 140, r: 24 } : { t: 24, b: 90, l: 56, r: 24 },
+      legend: { orientation: "h", y: horizontal ? -0.22 : -0.3, x: 0.5, xanchor: "center" }
+    }, { responsive: true, displayModeBar: false });
+  }
+
+  function renderDistribution() {
+    stackedBar(
+      'individualTipoSeveridadChart',
+      distributionCharts.tipo_severidad,
+      'Tipo de lesi\u00f3n por severidad',
+      'N\u00famero de lesiones',
+      '',
+      severityColors,
+      true
+    );
+
+    stackedBar(
+      'individualLugarMecanismoChart',
+      distributionCharts.lugar_mecanismo,
+      'Lugar de ocurrencia por mecanismo',
+      '',
+      'N\u00famero de lesiones',
+      {},
+      false
+    );
+  }
+
+  function renderImpact() {
+    stackedBar(
+      'individualImpactoTipoZonaChart',
+      impactCharts.tipo_zona,
+      'D\u00edas de baja acumulados por tipo de lesi\u00f3n y zona corporal',
+      'D\u00edas de baja',
+      '',
+      {},
+      true
+    );
+
+    const chartEl = document.getElementById('individualImpactoDetalleChart');
+    const detalle = impactCharts.detalle || {};
+    if (!chartEl || !window.Plotly || !detalle.labels || detalle.labels.length === 0) {
+      return;
+    }
+
+    Plotly.newPlot(chartEl, [{
+      x: detalle.values,
+      y: detalle.labels,
+      type: "bar",
+      orientation: "h",
+      marker: { color: detalle.colors },
+      hovertemplate: "<b>%{y}</b><br>D\u00edas de baja: %{x}<extra></extra>"
+    }], {
+      xaxis: { title: "D\u00edas de baja", rangemode: "tozero", automargin: true, gridcolor: "rgba(0,0,0,0.06)" },
+      yaxis: { title: "", automargin: true },
+      template: "simple_white",
+      height: 420,
+      margin: { t: 24, b: 60, l: 140, r: 34 },
+      showlegend: false
+    }, { responsive: true, displayModeBar: false });
+  }
+
+  function renderTreatments() {
+    const chartEl = document.getElementById('individualTratamientosChart');
+    if (!chartEl || !window.Plotly || !treatmentChart.labels || treatmentChart.labels.length === 0) {
+      return;
+    }
+
+    Plotly.newPlot(chartEl, [{
+      type: "sunburst",
+      labels: treatmentChart.labels,
+      ids: treatmentChart.ids,
+      parents: treatmentChart.parents,
+      values: treatmentChart.values,
+      branchvalues: "total",
+      maxdepth: 3,
+      hovertemplate: "<b>%{label}</b><br>Frecuencia: %{value}<extra></extra>"
+    }], {
+      template: "simple_white",
+      height: 520,
+      margin: { t: 24, b: 24, l: 24, r: 24 }
+    }, { responsive: true, displayModeBar: false });
+  }
+
+  function renderSpecificType() {
+    const heatmapEl = document.getElementById('individualTipoEspecificoHeatmap');
+    if (heatmapEl && window.Plotly && specificTypeHeatmap.rows && specificTypeHeatmap.rows.length > 0) {
+      const z = specificTypeHeatmap.rows.map((row) => row.cells.map((cell) => cell.value));
+      Plotly.newPlot(heatmapEl, [{
+        type: "heatmap",
+        x: specificTypeHeatmap.specifics,
+        y: specificTypeHeatmap.types,
+        z,
+        text: z.map((row) => row.map((value) => value > 0 ? String(value) : "")),
+        texttemplate: "%{text}",
+        textfont: { color: "#111827", size: 12 },
+        colorscale: softBlueScale,
+        showscale: true,
+        hovertemplate: "Tipo espec\u00edfico: %{x}<br>Tipo de lesi\u00f3n: %{y}<br>Lesiones: %{z}<extra></extra>"
+      }], {
+        xaxis: { title: { text: "Tipo espec\u00edfico", standoff: 24 }, tickangle: -25, ticklabelposition: "outside", automargin: true },
+        yaxis: { title: { text: "Tipo de lesi\u00f3n", standoff: 24 }, automargin: true },
+        template: "simple_white",
+        height: 520,
+        margin: { t: 24, b: 150, l: 160, r: 28 }
+      }, { responsive: true, displayModeBar: false });
+    }
+
+    stackedBar(
+      'individualTipoMecanismoChart',
+      specificTypeMechanism,
+      'Relaci\u00f3n entre tipo de lesi\u00f3n y mecanismo',
+      'Tipo de lesi\u00f3n',
+      'Frecuencia',
+      {},
+      false
+    );
+  }
+
+  function renderRecurrences() {
+    const pieEl = document.getElementById('individualRecidivasPieChart');
+    const pieData = recurrenceCharts.pie || {};
+    if (pieEl && window.Plotly && pieData.labels && pieData.labels.length > 0) {
+      Plotly.newPlot(pieEl, [{
+        type: "pie",
+        labels: pieData.labels,
+        values: pieData.values,
+        marker: { colors: ["#8DE5A1", "#FFB482"] },
+        hovertemplate: "%{label}<br>Frecuencia: %{value}<br>%{percent}<extra></extra>"
+      }], {
+        template: "simple_white",
+        height: 350,
+        margin: { t: 24, b: 24, l: 24, r: 24 },
+        legend: { orientation: "h", y: -0.12, x: 0.5, xanchor: "center" }
+      }, { responsive: true, displayModeBar: false });
+    }
+
+    const typeEl = document.getElementById('individualTipoRecidivaChart');
+    const typeData = recurrenceCharts.tipo_recidiva || {};
+    if (typeEl && window.Plotly && typeData.labels && typeData.labels.length > 0) {
+      const colors = { "Nueva": "#9ecae1", "Recidiva": "#d62728" };
+      const traces = (typeData.datasets || []).map((dataset) => ({
+        x: dataset.data,
+        y: typeData.labels,
+        name: dataset.label,
+        type: "bar",
+        orientation: "h",
+        marker: { color: colors[dataset.label] || "#9ca3af" },
+        customdata: dataset.zonas || [],
+        hovertemplate: "<b>" + dataset.label + "</b><br>Tipo de lesi\u00f3n: %{y}<br>N\u00famero de lesiones: %{x}<br>Zonas: %{customdata}<extra></extra>"
+      }));
+      Plotly.newPlot(typeEl, traces, {
+        xaxis: { title: "N\u00famero de lesiones", rangemode: "tozero", automargin: true, gridcolor: "rgba(0,0,0,0.06)" },
+        yaxis: { title: "", automargin: true },
+        barmode: "stack",
+        template: "simple_white",
+        height: 420,
+        margin: { t: 24, b: 70, l: 140, r: 24 },
+        legend: { orientation: "h", y: -0.22, x: 0.5, xanchor: "center" }
+      }, { responsive: true, displayModeBar: false });
+    }
+
+    const heatmapEl = document.getElementById('individualTipoLesionTipoRecidivaHeatmap');
+    const heatmapData = recurrenceCharts.tipo_lesion_tipo_recidiva || {};
+    if (heatmapEl && window.Plotly && heatmapData.rows && heatmapData.rows.length > 0) {
+      const z = heatmapData.rows.map((row) => row.cells.map((cell) => cell.value));
+      Plotly.newPlot(heatmapEl, [{
+        type: "heatmap",
+        x: heatmapData.recurrences,
+        y: heatmapData.types,
+        z,
+        text: z.map((row) => row.map((value) => value > 0 ? String(value) : "")),
+        texttemplate: "%{text}",
+        textfont: { color: "#111827", size: 12 },
+        colorscale: softBlueScale,
+        showscale: true,
+        hovertemplate: "Tipo de recidiva: %{x}<br>Tipo de lesi\u00f3n: %{y}<br>Lesiones: %{z}<extra></extra>"
+      }], {
+        xaxis: { title: { text: "Tipo de recidiva", standoff: 24 }, tickangle: 0, ticklabelposition: "outside", automargin: true },
+        yaxis: { title: { text: "Tipo de lesi\u00f3n", standoff: 24 }, automargin: true },
+        template: "simple_white",
+        height: 420,
+        margin: { t: 24, b: 100, l: 160, r: 28 }
+      }, { responsive: true, displayModeBar: false });
+    }
+  }
+
+  function renderCharts() {
+    renderHistory();
+    renderDistribution();
+    renderImpact();
+    renderTreatments();
+    renderSpecificType();
+    renderRecurrences();
+  }
+
+  renderCharts();
+
+  document.querySelectorAll('#lesionesIndividualTabs button[data-bs-toggle="tab"]').forEach((button) => {
+    button.addEventListener('shown.bs.tab', function (event) {
+      const tab = event.target.getAttribute('data-bs-target').replace('#', '');
+      const url = new URL(window.location.href);
+      url.searchParams.set('active_tab', tab);
+      window.history.replaceState({}, '', url);
+      document.querySelectorAll('form input[name="active_tab"]').forEach((input) => {
+        input.value = tab;
+      });
+      renderCharts();
+    });
   });
+
+  if (window.location.hash === '#individual-impacto-detalle') {
+    const target = document.getElementById('individual-impacto-detalle');
+    if (target) {
+      setTimeout(() => target.scrollIntoView({ block: 'start' }), 80);
+    }
+  }
 });
 </script>
 {% endblock %}

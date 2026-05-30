@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections import Counter
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -9,7 +10,13 @@ from sqlalchemy import text
 
 from dux import db
 from dux.common.lesiones.queries import get_lesiones_competitions, get_lesiones_records
-from dux.common.lesiones.transforms import coerce_date, normalize_records, to_float
+from dux.common.lesiones.transforms import (
+    POSITION_OPTIONS,
+    coerce_date,
+    normalize_position,
+    normalize_records,
+    to_float,
+)
 
 
 DEFAULT_PLANTEL = "1FF"
@@ -311,6 +318,12 @@ def _unique_options(records: list[dict[str, Any]], key: str) -> list[str]:
     })
 
 
+def _position_options(records: list[dict[str, Any]]) -> list[str]:
+    present_options = set(_unique_options(records, "posicion"))
+    extras = sorted(present_options - set(POSITION_OPTIONS))
+    return [*POSITION_OPTIONS, *extras]
+
+
 def _filter_groupal_records(
     records: list[dict[str, Any]],
     posicion: str | None = None,
@@ -318,9 +331,10 @@ def _filter_groupal_records(
 ) -> list[dict[str, Any]]:
     filtered = list(records)
     if posicion:
+        selected_position = normalize_position(posicion)
         filtered = [
             record for record in filtered
-            if str(record.get("posicion") or "").strip() == str(posicion).strip()
+            if normalize_position(record.get("posicion")) == selected_position
         ]
     if tipo:
         filtered = [
@@ -439,21 +453,22 @@ def _build_player_card(player_records: list[dict[str, Any]]) -> dict[str, Any] |
         return None
     base = player_records[0]
     fecha_nacimiento = coerce_date(base.get("fecha_nacimiento"))
-    foto_proxy_url = None
-    if base.get("foto_url") or base.get("foto_url_drive"):
-        foto_proxy_url = "dashboard_physical.player_photo"
+    identificacion = str(base.get("id_jugadora") or "").strip()
+    has_photo = bool(str(base.get("foto_url") or "").strip() or str(base.get("foto_url_drive") or "").strip())
+    nombre = base.get("nombre_jugadora") or "-"
 
     return {
-        "id_jugadora": base.get("id_jugadora"),
-        "nombre": base.get("nombre_jugadora") or "-",
+        "id_jugadora": identificacion,
+        "nombre": nombre,
+        "initial": str(nombre[:1] or "?").upper(),
         "dorsal": base.get("dorsal"),
-        "identificacion": base.get("id_jugadora") or "-",
+        "identificacion": identificacion or "-",
         "pais": base.get("nacionalidad") or "-",
         "plantel": base.get("plantel") or "-",
         "posicion": base.get("posicion") or "-",
         "fecha_nacimiento": fecha_nacimiento,
         "edad": _calculate_age(fecha_nacimiento),
-        "has_photo": bool(foto_proxy_url),
+        "has_photo": has_photo and bool(identificacion),
     }
 
 
@@ -486,14 +501,192 @@ def _build_individual_kpis(records: list[dict[str, Any]]) -> list[dict[str, Any]
 
 def _build_individual_history_chart(records: list[dict[str, Any]]) -> dict[str, Any]:
     ordered = sorted(
-        [record for record in records if record.get("fecha_lesion")],
+        [
+            record for record in records
+            if record.get("fecha_lesion") and (to_float(record.get("dias_baja_estimado")) or 0) > 0
+        ],
         key=lambda record: record["fecha_lesion"],
     )
     return {
-        "labels": [record["fecha_lesion"].strftime("%Y-%m-%d") for record in ordered],
-        "dias": [to_float(record.get("dias_baja_estimado")) or 0 for record in ordered],
-        "tipos": [record.get("tipo_lesion") or "Lesion" for record in ordered],
-        "gravedad": [record.get("impacto_dias_baja_estimado") or "-" for record in ordered],
+        "points": [
+            {
+                "fecha": record["fecha_lesion"].strftime("%Y-%m-%d"),
+                "dias_baja": to_float(record.get("dias_baja_estimado")) or 0,
+                "impacto": str(record.get("impacto_dias_baja_estimado") or "N/A").strip() or "N/A",
+                "tipo_lesion": record.get("tipo_lesion") or "N/A",
+                "zona_cuerpo": record.get("zona_cuerpo") or "N/A",
+                "mecanismo": record.get("mecanismo") or "N/A",
+                "descripcion": record.get("descripcion") or "N/A",
+            }
+            for record in ordered
+        ],
+    }
+
+
+def _build_individual_zones_chart(records: list[dict[str, Any]]) -> dict[str, Any]:
+    counts = Counter(
+        str(record.get("zona_cuerpo") or "N/A").strip() or "N/A"
+        for record in records
+    )
+    rows = [
+        {"zona": zona, "frecuencia": count}
+        for zona, count in sorted(counts.items(), key=lambda item: (item[1], item[0]))
+    ]
+    return {"rows": rows}
+
+
+def _build_individual_type_mechanism_chart(records: list[dict[str, Any]]) -> dict[str, Any]:
+    counts: dict[tuple[str, str], int] = {}
+    for record in records:
+        tipo = str(record.get("tipo_lesion") or "N/A").strip() or "N/A"
+        mecanismo = str(record.get("mecanismo") or "N/A").strip() or "N/A"
+        counts[(tipo, mecanismo)] = counts.get((tipo, mecanismo), 0) + 1
+
+    type_totals: dict[str, int] = {}
+    for (tipo, _mecanismo), count in counts.items():
+        type_totals[tipo] = type_totals.get(tipo, 0) + count
+
+    tipos = [key for key, _ in sorted(type_totals.items(), key=lambda item: (item[0]))]
+    mecanismos = sorted({mecanismo for _, mecanismo in counts})
+    return {
+        "labels": tipos,
+        "datasets": [
+            {
+                "label": mecanismo,
+                "data": [counts.get((tipo, mecanismo), 0) for tipo in tipos],
+            }
+            for mecanismo in mecanismos
+        ],
+    }
+
+
+def _build_individual_distribution_charts(records: list[dict[str, Any]]) -> dict[str, Any]:
+    distribution = _build_distribution_charts(records)
+    return {
+        "tipo_severidad": distribution["tipo_severidad"],
+        "lugar_mecanismo": distribution["lugar_mecanismo"],
+    }
+
+
+def _split_treatments(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        raw_value = value.strip()
+        if not raw_value:
+            return []
+        try:
+            parsed = json.loads(raw_value)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, list):
+            return [str(item).strip() for item in parsed if str(item).strip()]
+        return [item.strip() for item in raw_value.split(",") if item.strip()]
+    return []
+
+
+def _build_individual_treatment_sunburst(records: list[dict[str, Any]]) -> dict[str, Any]:
+    counts: dict[tuple[str, str, str], int] = {}
+    for record in records:
+        tipo = str(record.get("tipo_lesion") or "N/A").strip() or "N/A"
+        zona = str(record.get("zona_cuerpo") or "N/A").strip() or "N/A"
+        treatments = _split_treatments(record.get("tipo_tratamiento")) or ["N/A"]
+        for treatment in treatments:
+            counts[(tipo, zona, treatment)] = counts.get((tipo, zona, treatment), 0) + 1
+
+    if not counts:
+        return {"labels": [], "parents": [], "values": []}
+
+    nodes: dict[tuple[str, str], int] = {}
+    for (tipo, zona, treatment), count in counts.items():
+        nodes[("tipo", tipo)] = nodes.get(("tipo", tipo), 0) + count
+        nodes[("zona", f"{tipo}|{zona}")] = nodes.get(("zona", f"{tipo}|{zona}"), 0) + count
+        nodes[("tratamiento", f"{tipo}|{zona}|{treatment}")] = nodes.get(("tratamiento", f"{tipo}|{zona}|{treatment}"), 0) + count
+
+    labels: list[str] = []
+    ids: list[str] = []
+    parents: list[str] = []
+    values: list[int] = []
+
+    for (kind, node_id), count in sorted(nodes.items(), key=lambda item: item[0][1]):
+        parts = node_id.split("|")
+        if kind == "tipo":
+            label = node_id
+            parent = ""
+            unique_id = f"tipo:{node_id}"
+        elif kind == "zona":
+            label = parts[1]
+            parent = f"tipo:{parts[0]}"
+            unique_id = f"zona:{node_id}"
+        else:
+            label = parts[2]
+            parent = f"zona:{parts[0]}|{parts[1]}"
+            unique_id = f"tratamiento:{node_id}"
+        labels.append(label)
+        ids.append(unique_id)
+        parents.append(parent)
+        values.append(count)
+
+    return {"labels": labels, "ids": ids, "parents": parents, "values": values}
+
+
+def _build_individual_recurrence_pie(records: list[dict[str, Any]]) -> dict[str, Any]:
+    counts = {
+        "Nueva": sum(1 for record in records if not record.get("es_recidiva")),
+        "Recidiva": sum(1 for record in records if record.get("es_recidiva")),
+    }
+    labels = [label for label, value in counts.items() if value > 0]
+    return {
+        "labels": labels,
+        "values": [counts[label] for label in labels],
+    }
+
+
+def _build_individual_recurrence_type_chart(records: list[dict[str, Any]]) -> dict[str, Any]:
+    counts: dict[tuple[str, str], dict[str, Any]] = {}
+    for record in records:
+        tipo = str(record.get("tipo_lesion") or "N/A").strip() or "N/A"
+        case_type = "Recidiva" if record.get("es_recidiva") else "Nueva"
+        item = counts.setdefault((tipo, case_type), {"total": 0, "zonas": set()})
+        item["total"] += 1
+        zona = str(record.get("zona_cuerpo") or "").strip()
+        if zona:
+            item["zonas"].add(zona)
+
+    label_totals: dict[str, int] = {}
+    for (tipo, _case_type), item in counts.items():
+        label_totals[tipo] = label_totals.get(tipo, 0) + item["total"]
+
+    labels = [key for key, _ in sorted(label_totals.items(), key=lambda item: (item[1], item[0]))]
+    return {
+        "labels": labels,
+        "datasets": [
+            {
+                "label": case_type,
+                "data": [counts.get((label, case_type), {"total": 0})["total"] for label in labels],
+                "zonas": [
+                    ", ".join(sorted(counts.get((label, case_type), {"zonas": set()})["zonas"])) or "N/A"
+                    for label in labels
+                ],
+            }
+            for case_type in ["Nueva", "Recidiva"]
+        ],
+    }
+
+
+def _build_individual_recurrence_charts(records: list[dict[str, Any]]) -> dict[str, Any]:
+    if not any(record.get("es_recidiva") for record in records):
+        empty_heatmap = {"types": [], "recurrences": [], "rows": [], "max_value": 0}
+        return {
+            "pie": {"labels": [], "values": []},
+            "tipo_recidiva": {"labels": [], "datasets": []},
+            "tipo_lesion_tipo_recidiva": empty_heatmap,
+        }
+
+    return {
+        "pie": _build_individual_recurrence_pie(records),
+        "tipo_recidiva": _build_individual_recurrence_type_chart(records),
+        "tipo_lesion_tipo_recidiva": _build_recurrence_type_heatmap(records),
     }
 
 
@@ -502,7 +695,13 @@ def build_lesiones_individual_context(
     posicion: str | None = None,
     jugadora: str | None = None,
     tipo: str | None = None,
+    impact_tipo: str | None = None,
+    impact_zona: str | None = None,
+    active_tab: str = "historial",
 ) -> dict[str, Any]:
+    if active_tab not in {"historial", "distribucion", "impacto", "tratamientos", "tipo-especifico", "recidivas", "registros"}:
+        active_tab = "historial"
+
     selected_plantel = plantel or DEFAULT_PLANTEL
     user_filter_sql, user_params = _build_user_access_filter()
     competitions = get_lesiones_competitions()
@@ -514,7 +713,10 @@ def build_lesiones_individual_context(
         )
     )
 
-    position_options = _unique_options(plantel_records, "posicion")
+    position_options = _position_options(plantel_records)
+    posicion = normalize_position(posicion) or None
+    if posicion and posicion not in position_options:
+        posicion = None
     records_after_position = _filter_groupal_records(plantel_records, posicion=posicion)
     player_options = _build_player_options(records_after_position)
     selected_player_id = _select_player_id(records_after_position, jugadora)
@@ -523,11 +725,14 @@ def build_lesiones_individual_context(
         if selected_player_id and str(record.get("id_jugadora")) == selected_player_id
     ]
     type_options = _unique_options(player_records_base, "tipo_lesion")
+    if tipo and tipo not in type_options:
+        tipo = None
     player_records = _filter_groupal_records(player_records_base, tipo=tipo)
 
     return {
         "competitions": competitions,
         "plantel": selected_plantel,
+        "active_tab": active_tab,
         "filters": {
             "posicion": posicion or "",
             "jugadora": selected_player_id or "",
@@ -538,11 +743,21 @@ def build_lesiones_individual_context(
         },
         "player": _build_player_card(player_records_base),
         "kpis": _build_individual_kpis(player_records),
-        "records": player_records[:200],
+        "records": _sort_records_by_injury_date(player_records)[:200],
         "all_records_count": len(plantel_records),
         "player_records_count": len(player_records_base),
         "filtered_records_count": len(player_records),
         "history_chart": _build_individual_history_chart(player_records),
+        "distribution_charts": _build_individual_distribution_charts(player_records),
+        "impact_charts": _build_impact_charts(
+            player_records,
+            tipo_selected=impact_tipo,
+            zona_selected=impact_zona,
+        ),
+        "treatment_chart": _build_individual_treatment_sunburst(player_records),
+        "specific_type_heatmap": _build_specific_type_heatmap(player_records),
+        "specific_type_mechanism": _build_individual_type_mechanism_chart(player_records),
+        "recurrence_charts": _build_individual_recurrence_charts(player_records),
     }
 
 
@@ -1136,7 +1351,8 @@ def build_lesiones_grupal_context(
         )
     )
 
-    position_options = _unique_options(plantel_records, "posicion")
+    position_options = _position_options(plantel_records)
+    posicion = normalize_position(posicion) or None
     if posicion and posicion not in position_options:
         posicion = None
 
