@@ -75,6 +75,38 @@
     min-width: 8rem;
   }
 
+  .quick-access-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    min-height: 96px;
+    border: 1px solid rgba(13, 110, 253, .14);
+    border-radius: 1rem;
+    background: rgba(255, 255, 255, .96);
+    color: #111827;
+    text-decoration: none;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.10);
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+  }
+
+  .quick-access-card:hover,
+  .quick-access-card:focus {
+    color: #111827;
+    border-color: rgba(13, 110, 253, .45);
+    box-shadow: 0 12px 26px rgba(15, 23, 42, 0.16);
+    transform: translateY(-2px);
+  }
+
+  .quick-access-title {
+    font-size: 1.05rem;
+    font-weight: 800;
+  }
+
+  .quick-access-meta {
+    font-size: .85rem;
+    color: #6c757d;
+  }
+
   .table td,
   .table th {
     vertical-align: middle;
@@ -115,17 +147,8 @@
       <div>
         <h1 class="lesiones-title mb-1">Lesiones</h1>
         <p class="text-muted mb-0">
-          Inicio read-only del modulo de lesiones.
-          {% if period_label %}<span class="fw-semibold">{{ period_label }}</span>{% endif %}
+          Resumen inicial de lesiones, jugadoras y registros disponibles.
         </p>
-      </div>
-      <div class="d-flex flex-wrap gap-2">
-        <a class="btn btn-outline-primary btn-sm" href="{{ url_for('dashboard_lesiones.grupal', plantel=plantel, period=period) }}">
-          Analisis grupal
-        </a>
-        <a class="btn btn-outline-primary btn-sm" href="{{ url_for('dashboard_lesiones.individual', plantel=plantel) }}">
-          Analisis individual
-        </a>
       </div>
 
       <form method="get" class="d-flex flex-wrap align-items-end gap-2">
@@ -144,6 +167,44 @@
           <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('dashboard_lesiones.index', period=period) }}">Limpiar</a>
         {% endif %}
       </form>
+    </div>
+  </section>
+
+  <section class="lesiones-panel p-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+      <div>
+        <h4 class="lesiones-title mb-1">Accesos rapidos</h4>
+        <p class="text-muted mb-0">Elige el modo de analisis del modulo Lesiones.</p>
+      </div>
+      {% if plantel %}
+        <span class="badge bg-light text-dark border">Plantel {{ plantel }}</span>
+      {% endif %}
+    </div>
+    <div class="row g-3">
+      <div class="col-12 col-md-4">
+        <a class="quick-access-card p-3" href="{{ url_for('dashboard_lesiones.grupal', plantel=plantel, period=period) }}">
+          <div>
+            <div class="quick-access-title">Analisis grupal</div>
+            <div class="quick-access-meta mt-1">KPIs, filtros y graficos por plantel.</div>
+          </div>
+        </a>
+      </div>
+      <div class="col-12 col-md-4">
+        <a class="quick-access-card p-3" href="{{ url_for('dashboard_lesiones.individual', plantel=plantel) }}">
+          <div>
+            <div class="quick-access-title">Analisis individual</div>
+            <div class="quick-access-meta mt-1">Ficha, KPIs e historial por jugadora.</div>
+          </div>
+        </a>
+      </div>
+      <div class="col-12 col-md-4">
+        <a class="quick-access-card p-3" href="{{ url_for('dashboard_lesiones.registro', plantel=plantel) }}">
+          <div>
+            <div class="quick-access-title">Registrar lesion</div>
+            <div class="quick-access-meta mt-1">Alta de nuevas lesiones con validacion y guardado.</div>
+          </div>
+        </a>
+      </div>
     </div>
   </section>
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import unicodedata
 from collections import Counter
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -1147,12 +1148,29 @@ def _build_specific_type_heatmap(records: list[dict[str, Any]]) -> dict[str, Any
     }
 
 
+def _normalize_recurrence_type(value: Any) -> str | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+
+    collapsed = " ".join(raw.upper().split())
+    ascii_text = unicodedata.normalize("NFKD", collapsed).encode("ascii", "ignore").decode("ascii")
+
+    if ascii_text in {"NO APLICA", "N/A", "NA", "NONE", "NULL", "-"}:
+        return None
+    if "TEMPRANA" in ascii_text:
+        return "TEMPRANA (\u2264 2 MESES)"
+    if "TARDIA" in ascii_text:
+        return "TARD\u00cdA (2-12 MESES)"
+    return None
+
+
 def _build_recurrence_type_heatmap(records: list[dict[str, Any]]) -> dict[str, Any]:
     counts: dict[tuple[str, str], int] = {}
     for record in records:
         if not record.get("es_recidiva"):
             continue
-        tipo_recidiva = str(record.get("tipo_recidiva") or "").strip().upper()
+        tipo_recidiva = _normalize_recurrence_type(record.get("tipo_recidiva"))
         if not tipo_recidiva:
             continue
         tipo = str(record.get("tipo_lesion") or "N/A").strip() or "N/A"

@@ -23,6 +23,66 @@ def get_lesiones_competitions() -> list[dict[str, Any]]:
     return _fetch_all(sql)
 
 
+def get_lesiones_players(plantel: str | None = None) -> list[dict[str, Any]]:
+    where = ["f.id_estado = 1"]
+    params: dict[str, Any] = {}
+
+    if plantel:
+        where.append("f.competicion = :plantel")
+        params["plantel"] = plantel
+
+    sql = f"""
+        SELECT
+            f.identificacion AS id_jugadora,
+            f.nombre,
+            f.apellido,
+            f.competicion AS plantel,
+            f.fecha_nacimiento,
+            i.posicion,
+            i.dorsal,
+            i.nacionalidad,
+            i.foto_url,
+            i.foto_url_drive
+        FROM futbolistas f
+        LEFT JOIN informacion_futbolistas i
+            ON f.identificacion = i.identificacion
+        WHERE {" AND ".join(where)}
+        ORDER BY f.apellido ASC, f.nombre ASC;
+    """
+    return _fetch_all(sql, params)
+
+
+def get_lesiones_catalog(table_name: str) -> list[dict[str, Any]]:
+    allowed_tables = {
+        "segmentos_corporales",
+        "zonas_segmento",
+        "zonas_anatomicas",
+        "mecanismos",
+        "tipo_lesion",
+        "tipo_especifico_lesion",
+        "mecanismo_tipo_lesion",
+        "tratamientos",
+        "lugares",
+    }
+    if table_name not in allowed_tables:
+        raise ValueError(f"Catalogo no permitido: {table_name}")
+
+    return _fetch_all(f"SELECT * FROM {table_name} ORDER BY id;")
+
+
+def get_latest_lesion_id_for_player(id_jugadora: str) -> str | None:
+    sql = """
+        SELECT id_lesion
+        FROM lesiones
+        WHERE id_jugadora = :id_jugadora
+          AND id_lesion IS NOT NULL
+        ORDER BY fecha_hora_registro DESC, id DESC
+        LIMIT 1;
+    """
+    rows = _fetch_all(sql, {"id_jugadora": id_jugadora})
+    return str(rows[0]["id_lesion"]) if rows else None
+
+
 def get_lesiones_records(
     plantel: str | None = None,
     user_filter_sql: str = "1=1",

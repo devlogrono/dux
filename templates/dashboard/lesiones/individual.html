@@ -615,7 +615,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }, { responsive: true, displayModeBar: false });
   }
 
-  function stackedBar(chartId, chartData, title, xTitle, yTitle, colors, horizontal) {
+  function stackedBar(chartId, chartData, title, xTitle, yTitle, colors, horizontal, showSegmentLabels) {
     const chartEl = document.getElementById(chartId);
     if (!chartEl || !window.Plotly || !chartData || !chartData.labels || chartData.labels.length === 0) {
       return;
@@ -631,6 +631,10 @@ document.addEventListener('DOMContentLoaded', function () {
       type: "bar",
       orientation: horizontal ? "h" : "v",
       marker: { color: colors[dataset.label] || pastelColors[index % pastelColors.length] },
+      text: showSegmentLabels ? dataset.data.map((value) => value > 0 ? String(value) : "") : undefined,
+      textposition: showSegmentLabels ? "inside" : undefined,
+      insidetextanchor: showSegmentLabels ? "middle" : undefined,
+      textfont: showSegmentLabels ? { color: "#111827", size: 12 } : undefined,
       hovertemplate: horizontal
         ? "<b>" + dataset.label + "</b><br>" + hoverYTitle + ": %{y}<br>" + hoverXTitle + ": %{x}<extra></extra>"
         : "<b>" + dataset.label + "</b><br>" + hoverXTitle + ": %{x}<br>" + hoverYTitle + ": %{y}<extra></extra>"
@@ -655,6 +659,7 @@ document.addEventListener('DOMContentLoaded', function () {
       'N\u00famero de lesiones',
       '',
       severityColors,
+      true,
       true
     );
 
@@ -665,7 +670,8 @@ document.addEventListener('DOMContentLoaded', function () {
       '',
       'N\u00famero de lesiones',
       {},
-      false
+      false,
+      true
     );
   }
 
@@ -677,6 +683,7 @@ document.addEventListener('DOMContentLoaded', function () {
       'D\u00edas de baja',
       '',
       {},
+      true,
       true
     );
 
@@ -756,7 +763,8 @@ document.addEventListener('DOMContentLoaded', function () {
       'Tipo de lesi\u00f3n',
       'Frecuencia',
       {},
-      false
+      false,
+      true
     );
   }
 
@@ -790,6 +798,10 @@ document.addEventListener('DOMContentLoaded', function () {
         orientation: "h",
         marker: { color: colors[dataset.label] || "#9ca3af" },
         customdata: dataset.zonas || [],
+        text: dataset.data.map((value) => value > 0 ? String(value) : ""),
+        textposition: "inside",
+        insidetextanchor: "middle",
+        textfont: { color: "#111827", size: 12 },
         hovertemplate: "<b>" + dataset.label + "</b><br>Tipo de lesi\u00f3n: %{y}<br>N\u00famero de lesiones: %{x}<br>Zonas: %{customdata}<extra></extra>"
       }));
       Plotly.newPlot(typeEl, traces, {

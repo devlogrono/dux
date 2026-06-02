@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import login_required
 
+from dux.common.lesiones.registration import build_lesiones_registro_context, save_lesion_registration
 from dux.common.lesiones.services import (
     build_lesiones_grupal_context,
     build_lesiones_index_context,
@@ -57,3 +58,41 @@ def individual():
         active_tab=request.args.get("active_tab") or "historial",
     )
     return render_template("dashboard/lesiones/individual.html", **context)
+
+
+@bp.get("/registro")
+@login_required
+def registro():
+    context = build_lesiones_registro_context(request.args)
+    return render_template("dashboard/lesiones/registro.html", **context)
+
+
+@bp.post("/registro")
+@login_required
+def registro_save():
+    action = request.form.get("action")
+    if action != "save_registration":
+        return redirect(url_for("dashboard_lesiones.registro"))
+
+    try:
+        success, id_lesion, errors = save_lesion_registration(request.form)
+    except Exception as exc:
+        context = build_lesiones_registro_context(request.form)
+        context["save_errors"] = [f"No se pudo guardar la lesion: {exc}"]
+        return render_template("dashboard/lesiones/registro.html", **context), 500
+
+    if not success:
+        context = build_lesiones_registro_context(request.form)
+        context["save_errors"] = errors
+        context["validation_errors"] = errors
+        return render_template("dashboard/lesiones/registro.html", **context), 400
+
+    flash(f"Lesion {id_lesion} guardada correctamente.", "success")
+    return redirect(
+        url_for(
+            "dashboard_lesiones.individual",
+            plantel=request.form.get("plantel") or None,
+            jugadora=request.form.get("jugadora") or None,
+            active_tab="registros",
+        )
+    )
