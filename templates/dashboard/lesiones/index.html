@@ -181,7 +181,7 @@
       {% endif %}
     </div>
     <div class="row g-3">
-      <div class="col-12 col-md-4">
+      <div class="col-12 col-md-6 col-xl-3">
         <a class="quick-access-card p-3" href="{{ url_for('dashboard_lesiones.grupal', plantel=plantel, period=period) }}">
           <div>
             <div class="quick-access-title">Analisis grupal</div>
@@ -189,7 +189,7 @@
           </div>
         </a>
       </div>
-      <div class="col-12 col-md-4">
+      <div class="col-12 col-md-6 col-xl-3">
         <a class="quick-access-card p-3" href="{{ url_for('dashboard_lesiones.individual', plantel=plantel) }}">
           <div>
             <div class="quick-access-title">Analisis individual</div>
@@ -197,11 +197,19 @@
           </div>
         </a>
       </div>
-      <div class="col-12 col-md-4">
+      <div class="col-12 col-md-6 col-xl-3">
         <a class="quick-access-card p-3" href="{{ url_for('dashboard_lesiones.registro', plantel=plantel) }}">
           <div>
             <div class="quick-access-title">Registrar lesion</div>
             <div class="quick-access-meta mt-1">Alta de nuevas lesiones con validacion y guardado.</div>
+          </div>
+        </a>
+      </div>
+      <div class="col-12 col-md-6 col-xl-3">
+        <a class="quick-access-card p-3" href="{{ url_for('dashboard_lesiones.seguimiento', plantel=plantel) }}">
+          <div>
+            <div class="quick-access-title">Seguimiento</div>
+            <div class="quick-access-meta mt-1">Edicion, evolucion y control de lesiones registradas.</div>
           </div>
         </a>
       </div>

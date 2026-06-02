@@ -1,0 +1,612 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}Seguimiento de lesiones{% endblock %}
+
+{% block extra_css %}
+<style>
+  .seguimiento-shell { padding: 1.5rem 0; }
+  .lesiones-panel {
+    background: rgba(255, 255, 255, .95);
+    border-radius: .75rem;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, .14);
+  }
+  .lesiones-title { color: #111827; font-weight: 800; }
+  .section-title { color: #111827; font-size: 1rem; font-weight: 800; }
+  .help-text { color: #6b7280; font-size: .86rem; }
+  .selected-row { --bs-table-bg: rgba(13, 110, 253, .08); }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 5.5rem;
+    border-radius: 999px;
+    padding: .22rem .65rem;
+    font-size: .76rem;
+    font-weight: 800;
+  }
+  .status-activo { background: rgba(255, 140, 0, .18); color: #92400e; }
+  .status-inactivo { background: rgba(34, 197, 94, .15); color: #166534; }
+  .status-default { background: rgba(107, 114, 128, .14); color: #374151; }
+  .payload-table th { width: 34%; color: #6b7280; font-size: .78rem; text-transform: uppercase; }
+  .evolution-card {
+    border: 1px solid rgba(17, 24, 39, .08);
+    border-radius: .6rem;
+    background: #fff;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid seguimiento-shell">
+  <section class="lesiones-panel p-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+      <div>
+        <h1 class="lesiones-title mb-1">Seguimiento de lesiones</h1>
+        <p class="text-muted mb-0">Edicion, evolucion y control de lesiones registradas.</p>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('dashboard_lesiones.index', plantel=plantel) }}">Inicio</a>
+        <a class="btn btn-outline-primary btn-sm" href="{{ url_for('dashboard_lesiones.registro', plantel=plantel) }}">Registrar lesion</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="lesiones-panel p-4 mb-4">
+    <form method="get" class="row g-3 align-items-end">
+      <div class="col-12 col-md-3 col-xl-2">
+        <label for="plantel" class="form-label">Plantel</label>
+        <select id="plantel" name="plantel" class="form-select" onchange="this.form.submit()">
+          {% for competition in competitions %}
+            <option value="{{ competition.codigo }}" {% if plantel == competition.codigo|string %}selected{% endif %}>
+              {{ competition.nombre }}{% if competition.codigo %} ({{ competition.codigo }}){% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-3 col-xl-2">
+        <label for="posicion" class="form-label">Posicion</label>
+        <select id="posicion" name="posicion" class="form-select" onchange="this.form.submit()">
+          <option value="">Todas</option>
+          {% for option in filters.posiciones %}
+            <option value="{{ option }}" {% if filters.posicion == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-4 col-xl-3">
+        <label for="jugadora" class="form-label">Jugadora</label>
+        <select id="jugadora" name="jugadora" class="form-select" onchange="this.form.submit()">
+          {% for option in filters.jugadoras %}
+            <option value="{{ option.id_jugadora }}" {% if filters.jugadora == option.id_jugadora %}selected{% endif %}>
+              {{ option.nombre_jugadora }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-4 col-xl-3">
+        <label for="tipo" class="form-label">Tipo de lesion</label>
+        <select id="tipo" name="tipo" class="form-select" onchange="this.form.submit()">
+          <option value="">Todos</option>
+          {% for option in filters.tipos %}
+            <option value="{{ option }}" {% if filters.tipo == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-3 col-xl-2">
+        <label for="status" class="form-label">Status</label>
+        <select id="status" name="status" class="form-select" onchange="this.form.submit()">
+          {% for option in filters.status_options %}
+            <option value="{{ option.key }}" {% if filters.status == option.key %}selected{% endif %}>{{ option.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </form>
+  </section>
+
+  <section class="lesiones-panel p-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+      <div>
+        <h2 class="h5 lesiones-title mb-1">Lesiones encontradas</h2>
+        <p class="text-muted mb-0">Selecciona una lesion para precargar el formulario de seguimiento.</p>
+      </div>
+      {% if records %}
+        <span class="badge bg-light text-dark border">{{ records|length }} registros</span>
+      {% endif %}
+    </div>
+
+    {% if records %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>ID lesion</th>
+              <th>Jugadora</th>
+              <th>Fecha lesion</th>
+              <th>Zona cuerpo</th>
+              <th>Zona especifica</th>
+              <th>Tipo lesion</th>
+              <th>Reporta</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for record in records %}
+              {% set is_selected = record.id_lesion|string == selected_lesion_id|string %}
+              <tr class="{% if is_selected %}selected-row{% endif %}">
+                <td class="fw-semibold">
+                  <a href="{{ url_for('dashboard_lesiones.seguimiento', plantel=plantel, posicion=filters.posicion or None, jugadora=filters.jugadora or None, tipo=filters.tipo or None, status=filters.status, lesion=record.id_lesion) }}#seguimiento-editor">
+                    {{ record.id_lesion or "-" }}
+                  </a>
+                </td>
+                <td>{{ record.nombre_jugadora or "-" }}</td>
+                <td>{{ record.fecha_lesion.strftime('%Y-%m-%d') if record.fecha_lesion else "-" }}</td>
+                <td>{{ record.zona_cuerpo or "-" }}</td>
+                <td>{{ record.zona_especifica or "-" }}</td>
+                <td>{{ record.tipo_lesion or "-" }}</td>
+                <td>{{ record.personal_reporta or "-" }}</td>
+                <td>
+                  {% set status = record.estado_lesion or "" %}
+                  <span class="status-pill {% if status == 'ACTIVO' %}status-activo{% elif status == 'INACTIVO' %}status-inactivo{% else %}status-default{% endif %}">
+                    {{ status or "-" }}
+                  </span>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="alert alert-info mb-0">No hay lesiones para los filtros seleccionados.</div>
+    {% endif %}
+  </section>
+
+  {% if selected_lesion %}
+    {% if save_errors %}
+      <section class="lesiones-panel p-4 mb-4">
+        <div class="alert alert-danger mb-0">
+          <div class="fw-semibold mb-2">No se pudo guardar el seguimiento.</div>
+          <ul class="mb-0">
+            {% for error in save_errors %}
+              <li>{{ error }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </section>
+    {% endif %}
+
+    <form id="seguimientoForm" method="post" action="{{ url_for('dashboard_lesiones.seguimiento') }}">
+      <input type="hidden" name="action" value="save_followup">
+      <input type="hidden" name="plantel" value="{{ plantel }}">
+      <input type="hidden" name="posicion" value="{{ filters.posicion }}">
+      <input type="hidden" name="jugadora" value="{{ filters.jugadora }}">
+      <input type="hidden" name="tipo" value="{{ filters.tipo }}">
+      <input type="hidden" name="status" value="{{ filters.status }}">
+      <input type="hidden" name="lesion" value="{{ selected_lesion_id }}">
+
+      <section id="seguimiento-editor" class="lesiones-panel p-4 mb-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+          <div>
+            <h2 class="h5 lesiones-title mb-1">Editando lesion: {{ selected_lesion_id }}</h2>
+            <p class="text-muted mb-0">{{ selected_lesion.nombre_jugadora }} · {{ selected_lesion.tipo_lesion or "Tipo no informado" }}</p>
+          </div>
+          <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">Guardado activo</span>
+        </div>
+
+        <div class="row g-3">
+          <div class="col-12 col-md-4">
+            <label for="fecha_lesion" class="form-label">Fecha de la lesion</label>
+            <input id="fecha_lesion" name="fecha_lesion" type="date" class="form-control" value="{{ form.fecha_lesion }}">
+          </div>
+          <div class="col-12 col-md-4">
+            <label for="lugar_id" class="form-label">Lugar</label>
+            <select id="lugar_id" name="lugar_id" class="form-select">
+              <option value="">Seleccionar</option>
+              {% for option in catalogs.lugares %}
+                <option value="{{ option.id }}" {% if form.lugar_id == option.id|string %}selected{% endif %}>{{ option.nombre }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-4">
+            <label for="mecanismo_id" class="form-label">Mecanismo de lesion</label>
+            <select id="mecanismo_id" name="mecanismo_id" class="form-select">
+              <option value="">Seleccionar</option>
+              {% for option in catalogs.mecanismos %}
+                <option value="{{ option.id }}" {% if form.mecanismo_id == option.id|string %}selected{% endif %}>{{ option.nombre }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="col-12 col-md-4">
+            <label for="tipo_lesion_id" class="form-label">Tipo de lesion</label>
+            <select id="tipo_lesion_id" name="tipo_lesion_id" class="form-select" data-selected="{{ form.tipo_lesion_id }}">
+              <option value="">Seleccionar</option>
+              {% for option in catalogs.tipos_lesion_options %}
+                <option value="{{ option.id }}" {% if form.tipo_lesion_id == option.id|string %}selected{% endif %}>{{ option.nombre }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-4">
+            <label for="tipo_especifico_id" class="form-label">Tipo especifico</label>
+            <select id="tipo_especifico_id" name="tipo_especifico_id" class="form-select" data-selected="{{ form.tipo_especifico_id }}">
+              <option value="">Seleccionar</option>
+              {% for option in catalogs.tipos_especificos_options %}
+                <option value="{{ option.id }}" {% if form.tipo_especifico_id == option.id|string %}selected{% endif %}>{{ option.nombre }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-4">
+            <label for="segmento_id" class="form-label">Region anatomica</label>
+            <select id="segmento_id" name="segmento_id" class="form-select">
+              <option value="">Seleccionar</option>
+              {% for option in catalogs.segmentos %}
+                <option value="{{ option.id }}" {% if form.segmento_id == option.id|string %}selected{% endif %}>{{ option.nombre }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="col-12 col-md-4">
+            <label for="zona_cuerpo_id" class="form-label">Zona anatomica</label>
+            <select id="zona_cuerpo_id" name="zona_cuerpo_id" class="form-select" data-selected="{{ form.zona_cuerpo_id }}">
+              <option value="">Seleccionar</option>
+              {% for option in catalogs.zonas_cuerpo_options %}
+                <option value="{{ option.id }}" {% if form.zona_cuerpo_id == option.id|string %}selected{% endif %}>{{ option.nombre }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-4">
+            <label for="zona_especifica_id" class="form-label">Estructura anatomica</label>
+            <select id="zona_especifica_id" name="zona_especifica_id" class="form-select" data-selected="{{ form.zona_especifica_id }}">
+              <option value="">Seleccionar</option>
+              {% for option in catalogs.zonas_especificas_options %}
+                <option value="{{ option.id }}" {% if form.zona_especifica_id == option.id|string %}selected{% endif %}>{{ option.nombre }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-4">
+            <label for="lateralidad" class="form-label">Lateralidad</label>
+            <select id="lateralidad" name="lateralidad" class="form-select">
+              {% for option in catalogs.lateralidades %}
+                <option value="{{ option }}" {% if form.lateralidad == option %}selected{% endif %}>{{ option }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="col-12">
+            <label for="diagnostico" class="form-label">Diagnostico medico</label>
+            <textarea id="diagnostico" name="diagnostico" class="form-control" rows="2">{{ form.diagnostico }}</textarea>
+          </div>
+
+          <div class="col-12 col-md-3">
+            <div class="form-check mt-4">
+              <input id="es_recidiva" name="es_recidiva" class="form-check-input" type="checkbox" value="1" {% if form.es_recidiva %}checked{% endif %}>
+              <label for="es_recidiva" class="form-check-label">Es recidiva</label>
+            </div>
+          </div>
+          <div class="col-12 col-md-3">
+            <label for="tipo_recidiva" class="form-label">Tipo de recidiva</label>
+            <select id="tipo_recidiva" name="tipo_recidiva" class="form-select">
+              {% for option in catalogs.tipos_recidiva %}
+                <option value="{{ option }}" {% if form.tipo_recidiva == option %}selected{% endif %}>{{ option }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-3">
+            <div class="form-check mt-4">
+              <input id="implica_baja" name="implica_baja" class="form-check-input" type="checkbox" value="1" {% if form.implica_baja %}checked{% endif %}>
+              <label for="implica_baja" class="form-check-label">Implica baja</label>
+            </div>
+          </div>
+          <div class="col-12 col-md-3">
+            <label for="fecha_alta_diagnostico" class="form-label">Alta deportiva estimada</label>
+            <input id="fecha_alta_diagnostico" name="fecha_alta_diagnostico" type="date" class="form-control" value="{{ form.fecha_alta_diagnostico }}">
+          </div>
+
+          <div class="col-12 col-md-4">
+            <label for="dias_baja_estimado" class="form-label">Dias estimados de baja</label>
+            <input id="dias_baja_estimado" type="number" class="form-control" value="{{ summary.dias_baja_estimado or 0 }}" readonly>
+          </div>
+          <div class="col-12 col-md-4">
+            <label for="estado_visual" class="form-label">Estado visual</label>
+            <input id="estado_visual" type="text" class="form-control" value="{{ summary.estado_lesion or '-' }}" readonly>
+          </div>
+          <div class="col-12 col-md-4">
+            <label for="tipo_tratamiento" class="form-label">Tipo(s) de tratamiento</label>
+            <select id="tipo_tratamiento" name="tipo_tratamiento" class="form-select" multiple size="4">
+              {% for option in catalogs.tratamientos %}
+                <option value="{{ option.id }}" {% if option.id|string in form.tipo_tratamiento %}selected{% endif %}>{{ option.nombre }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="col-12 col-md-4">
+            <label for="personal_reporta" class="form-label">Personal medico que reporta</label>
+            <input id="personal_reporta" name="personal_reporta" type="text" class="form-control" value="{{ form.personal_reporta }}">
+          </div>
+          <div class="col-12 col-md-8">
+            <label for="descripcion" class="form-label">Observaciones / Descripcion</label>
+            <textarea id="descripcion" name="descripcion" class="form-control" rows="2">{{ form.descripcion }}</textarea>
+          </div>
+        </div>
+      </section>
+
+      <section class="lesiones-panel p-4 mb-4">
+        <h2 class="h5 lesiones-title mb-3">Evolucion de la lesion</h2>
+        {% if selected_lesion.estado_lesion == 'OBSERVACION' %}
+          <div class="alert alert-warning">
+            La lesion se encuentra pendiente de su evolucion, no representa baja deportiva.
+          </div>
+        {% endif %}
+
+        <div class="row g-3">
+          <div class="col-12">
+            <div class="form-check">
+              <input id="add_evolution" name="add_evolution" class="form-check-input" type="checkbox" value="1" {% if evolution_form.add_evolution %}checked{% endif %}>
+              <label for="add_evolution" class="form-check-label fw-semibold">Añadir seguimiento</label>
+            </div>
+          </div>
+          <div class="col-12 col-md-3">
+            <label for="fecha_control" class="form-label">Fecha de control</label>
+            <input id="fecha_control" name="fecha_control" type="date" class="form-control" value="{{ evolution_form.fecha_control }}">
+          </div>
+          <div class="col-12 col-md-4">
+            <label for="tratamiento_aplicado" class="form-label">Tratamiento aplicado</label>
+            <select id="tratamiento_aplicado" name="tratamiento_aplicado" class="form-select" multiple size="4">
+              {% for option in catalogs.tratamientos %}
+                <option value="{{ option.id }}" {% if option.id|string in evolution_form.tratamiento_aplicado %}selected{% endif %}>{{ option.nombre }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-5">
+            <label for="personal_medico" class="form-label">Personal medico</label>
+            <input id="personal_medico" name="personal_medico" type="text" class="form-control" value="{{ evolution_form.personal_medico }}">
+          </div>
+          <div class="col-12">
+            <label for="observaciones" class="form-label">Observaciones o incidencias</label>
+            <textarea id="observaciones" name="observaciones" class="form-control" rows="2">{{ evolution_form.observaciones }}</textarea>
+          </div>
+          <div class="col-12 col-md-4">
+            <div class="form-check mt-2">
+              <input id="change_state" name="change_state" class="form-check-input" type="checkbox" value="1" {% if evolution_form.change_state %}checked{% endif %}>
+              <label for="change_state" class="form-check-label">Cambiar estado de la lesion</label>
+            </div>
+          </div>
+          <div class="col-12 col-md-4">
+            <label for="nuevo_estado" class="form-label">Nuevo estado</label>
+            <select id="nuevo_estado" name="nuevo_estado" class="form-select">
+              <option value="">Sin cambio</option>
+              {% for option in ['ACTIVO', 'OBSERVACION', 'INACTIVO'] %}
+                <option value="{{ option }}" {% if evolution_form.nuevo_estado == option %}selected{% endif %}>{{ option }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-3">
+            <div class="form-check mt-2">
+              <input id="alta_medica" name="alta_medica" class="form-check-input" type="checkbox" value="1" {% if evolution_form.alta_medica %}checked{% endif %}>
+              <label for="alta_medica" class="form-check-label">Alta medica</label>
+            </div>
+          </div>
+          <div class="col-12 col-md-3">
+            <label for="fecha_alta_medica" class="form-label">Fecha alta medica</label>
+            <input id="fecha_alta_medica" name="fecha_alta_medica" type="date" class="form-control" value="{{ evolution_form.fecha_alta_medica }}">
+          </div>
+          <div class="col-12 col-md-3">
+            <div class="form-check mt-2">
+              <input id="alta_deportiva" name="alta_deportiva" class="form-check-input" type="checkbox" value="1" {% if evolution_form.alta_deportiva %}checked{% endif %}>
+              <label for="alta_deportiva" class="form-check-label">Alta deportiva</label>
+            </div>
+          </div>
+          <div class="col-12 col-md-3">
+            <label for="fecha_alta_deportiva" class="form-label">Fecha alta deportiva</label>
+            <input id="fecha_alta_deportiva" name="fecha_alta_deportiva" type="date" class="form-control" value="{{ evolution_form.fecha_alta_deportiva }}">
+          </div>
+        </div>
+
+        <hr class="my-4">
+        <h3 class="section-title mb-3">Registros de evolucion</h3>
+        {% if evolution_entries %}
+          <div class="row g-3">
+            {% for item in evolution_entries %}
+              <div class="col-12 col-lg-6">
+                <div class="evolution-card p-3">
+                  <div class="fw-semibold">{{ item.fecha_control or item.fecha or "Fecha no informada" }}</div>
+                  <div class="help-text mt-1">{{ item.personal_seguimiento or item.personal_medico or item.personal_reporta or "Personal no informado" }}</div>
+                  <div class="mt-2">{{ item.observaciones or item.descripcion or "Sin observaciones" }}</div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-info mb-0">Sin registros de evolucion disponibles.</div>
+        {% endif %}
+      </section>
+
+      <section id="seguimiento-preview" class="lesiones-panel p-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+          <div>
+            <h2 class="h5 lesiones-title mb-1">Previsualizacion</h2>
+            <p class="text-muted mb-0">Payload aproximado de actualizacion antes de guardar.</p>
+          </div>
+          <div class="form-check">
+            <input id="preview" name="preview" class="form-check-input" type="checkbox" value="1" {% if preview_enabled %}checked{% endif %}>
+            <label for="preview" class="form-check-label">Previsualizacion</label>
+          </div>
+        </div>
+
+        <div class="row g-3 align-items-center mb-3">
+          <div class="col-12 col-md-3">
+            <div class="help-text">Dias baja</div>
+            <div id="summary_days" class="fs-4 fw-bold">{{ summary.dias_baja_estimado or 0 }}</div>
+          </div>
+          <div class="col-12 col-md-3">
+            <div class="help-text">Estado lesion</div>
+            <div id="summary_status" class="fs-5 fw-bold">{{ summary.estado_lesion or '-' }}</div>
+          </div>
+          <div class="col-12 col-md-3">
+            <div class="help-text">Gravedad</div>
+            <div id="summary_severity" class="fs-5 fw-bold">{{ summary.impacto_dias_baja_estimado or '-' }}</div>
+          </div>
+          <div class="col-12 col-md-3 d-flex gap-2">
+            <button type="submit" name="preview" value="1" class="btn btn-outline-primary flex-fill" formmethod="get" formaction="{{ url_for('dashboard_lesiones.seguimiento') }}#seguimiento-preview">Vista previa</button>
+            <button type="submit" class="btn btn-primary flex-fill">Guardar</button>
+          </div>
+        </div>
+
+        {% if preview_enabled and preview_payload %}
+          <div class="table-responsive">
+            <table class="table table-sm payload-table mb-0">
+              <tbody>
+                {% for key, value in preview_payload.items() %}
+                  <tr>
+                    <th>{{ key }}</th>
+                    <td>
+                      {% if value is mapping or value is sequence and value is not string %}
+                        <pre class="mb-0">{{ value|tojson(indent=2) }}</pre>
+                      {% else %}
+                        {{ value if value is not none else "None" }}
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="alert alert-light border mb-0">Activa la previsualizacion y pulsa Vista previa para ver el payload antes de guardar.</div>
+        {% endif %}
+      </section>
+    </form>
+  {% endif %}
+</div>
+
+<script>
+  (() => {
+    const catalogs = {{ catalogs|tojson }};
+    const form = document.getElementById('seguimientoForm');
+    if (!form) return;
+
+    const byId = (id) => document.getElementById(id);
+    const fillSelect = (select, rows, selected, placeholder = 'Seleccionar') => {
+      const previous = selected || select.value || select.dataset.selected || '';
+      select.innerHTML = '';
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = placeholder;
+      select.appendChild(empty);
+      rows.forEach((row) => {
+        const option = document.createElement('option');
+        option.value = String(row.id);
+        option.textContent = row.nombre || row.name || String(row.id);
+        if (String(row.id) === String(previous)) option.selected = true;
+        select.appendChild(option);
+      });
+      if (!Array.from(select.options).some((option) => option.selected && option.value === String(previous))) {
+        select.value = '';
+      }
+    };
+
+    const updateAnatomy = () => {
+      const segmento = byId('segmento_id').value;
+      const zonaSelect = byId('zona_cuerpo_id');
+      const zona = zonaSelect.value;
+      fillSelect(zonaSelect, catalogs.zonas_segmento.filter((row) => String(row.segmento_id) === String(segmento)), zona);
+      fillSelect(
+        byId('zona_especifica_id'),
+        catalogs.zonas_anatomicas.filter((row) => String(row.zona_id) === String(zonaSelect.value)),
+        byId('zona_especifica_id').value
+      );
+    };
+
+    const updateLesionTypes = () => {
+      const mecanismo = byId('mecanismo_id').value;
+      const tipoSelect = byId('tipo_lesion_id');
+      const tipo = tipoSelect.value;
+      const tipoIds = new Set(
+        catalogs.relaciones
+          .filter((row) => String(row.mecanismo_id) === String(mecanismo))
+          .map((row) => String(row.tipo_lesion_id))
+      );
+      fillSelect(tipoSelect, catalogs.tipos_lesion.filter((row) => tipoIds.has(String(row.id))), tipo);
+      const specificIds = new Set(
+        catalogs.relaciones
+          .filter((row) => String(row.mecanismo_id) === String(mecanismo) && String(row.tipo_lesion_id) === String(tipoSelect.value))
+          .map((row) => String(row.tipo_especifico_id))
+      );
+      fillSelect(
+        byId('tipo_especifico_id'),
+        catalogs.tipos_especificos.filter((row) => specificIds.has(String(row.id))),
+        byId('tipo_especifico_id').value
+      );
+    };
+
+    const severityForDays = (days) => {
+      if (!days || days <= 0) return '-';
+      if (days <= 3) return 'LEVE';
+      if (days <= 7) return 'MODERADA';
+      if (days <= 28) return 'GRAVE';
+      return 'MUY GRAVE';
+    };
+
+    const updateClinical = () => {
+      const recidiva = byId('es_recidiva').checked;
+      const tipoRecidiva = byId('tipo_recidiva');
+      tipoRecidiva.disabled = !recidiva;
+      if (!recidiva) tipoRecidiva.value = 'NO APLICA';
+
+      const implicaBaja = byId('implica_baja').checked;
+      const alta = byId('fecha_alta_diagnostico');
+      alta.disabled = !implicaBaja;
+      let days = 0;
+      if (implicaBaja && byId('fecha_lesion').value && alta.value) {
+        const start = new Date(byId('fecha_lesion').value);
+        const end = new Date(alta.value);
+        if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end >= start) {
+          days = Math.round((end - start) / 86400000);
+        }
+      }
+      byId('dias_baja_estimado').value = days;
+      byId('estado_visual').value = implicaBaja ? 'ACTIVO' : 'OBSERVACION';
+      byId('summary_days').textContent = days;
+      byId('summary_status').textContent = implicaBaja ? 'ACTIVO' : 'OBSERVACION';
+      byId('summary_severity').textContent = severityForDays(days);
+    };
+
+    const updateEvolutionState = () => {
+      const altaMedica = byId('alta_medica').checked;
+      const fechaAltaMedica = byId('fecha_alta_medica');
+      fechaAltaMedica.disabled = !altaMedica;
+
+      const altaDeportiva = byId('alta_deportiva').checked;
+      const fechaAltaDeportiva = byId('fecha_alta_deportiva');
+      fechaAltaDeportiva.disabled = !altaDeportiva;
+
+      const nuevoEstado = byId('nuevo_estado');
+      if (altaDeportiva) {
+        byId('summary_status').textContent = 'INACTIVO';
+        byId('estado_visual').value = 'INACTIVO';
+        if (nuevoEstado.value === '') nuevoEstado.value = 'INACTIVO';
+      }
+    };
+
+    byId('segmento_id').addEventListener('change', updateAnatomy);
+    byId('zona_cuerpo_id').addEventListener('change', updateAnatomy);
+    byId('mecanismo_id').addEventListener('change', updateLesionTypes);
+    byId('tipo_lesion_id').addEventListener('change', updateLesionTypes);
+    ['es_recidiva', 'implica_baja', 'fecha_lesion', 'fecha_alta_diagnostico'].forEach((id) => {
+      byId(id).addEventListener('change', updateClinical);
+    });
+    ['alta_medica', 'alta_deportiva', 'fecha_alta_medica', 'fecha_alta_deportiva', 'nuevo_estado'].forEach((id) => {
+      byId(id).addEventListener('change', updateEvolutionState);
+    });
+
+    updateClinical();
+    updateEvolutionState();
+
+    if (window.location.hash === '#seguimiento-preview') {
+      document.getElementById('seguimiento-preview')?.scrollIntoView({ block: 'start' });
+    }
+  })();
+</script>
+{% endblock %}
