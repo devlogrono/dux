@@ -1,0 +1,1027 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}Dashboard - Lesiones - Grupal{% endblock %}
+
+{% block extra_css %}
+<style>
+  .lesiones-shell {
+    padding: 1.5rem 0;
+  }
+
+  .lesiones-panel {
+    background: rgba(255, 255, 255, .95);
+    border-radius: .75rem;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, .14);
+  }
+
+  .lesiones-title {
+    color: #111827;
+    font-weight: 800;
+  }
+
+  .metric-card {
+    height: 100%;
+    border: 1px solid rgba(17, 24, 39, .08);
+    border-radius: .5rem;
+    background: #fff;
+  }
+
+  .metric-label {
+    min-height: 2.5rem;
+    color: #6b7280;
+    font-size: .76rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .metric-value {
+    color: #111827;
+    font-size: clamp(1.15rem, 1.7vw, 1.65rem);
+    font-weight: 800;
+    line-height: 1.12;
+    overflow-wrap: anywhere;
+  }
+
+  .metric-hint {
+    color: #6b7280;
+    font-size: .8rem;
+  }
+
+  .metric-delta {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: .15rem .5rem;
+    font-size: .76rem;
+    font-weight: 800;
+  }
+
+  .metric-delta-up {
+    background: rgba(220, 53, 69, .12);
+    color: #b42318;
+  }
+
+  .metric-delta-down {
+    background: rgba(25, 135, 84, .12);
+    color: #166534;
+  }
+
+  .metric-delta-flat {
+    background: rgba(107, 114, 128, .14);
+    color: #374151;
+  }
+
+  .tab-pane-shell {
+    min-height: 260px;
+  }
+
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    min-width: 5.5rem;
+    justify-content: center;
+    border-radius: 999px;
+    padding: .25rem .65rem;
+    font-size: .78rem;
+    font-weight: 700;
+  }
+
+  .status-activo {
+    background: rgba(255, 140, 0, .18);
+    color: #92400e;
+  }
+
+  .status-inactivo {
+    background: rgba(34, 197, 94, .15);
+    color: #166534;
+  }
+
+  .status-default {
+    background: rgba(107, 114, 128, .14);
+    color: #374151;
+  }
+
+  .heatmap-wrap {
+    overflow-x: auto;
+  }
+
+  .heatmap-grid {
+    display: grid;
+    gap: 2px;
+    min-width: max-content;
+  }
+
+  .heatmap-cell,
+  .heatmap-header,
+  .heatmap-row-label {
+    min-width: 5.5rem;
+    min-height: 2.4rem;
+    padding: .35rem .45rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: .25rem;
+    font-size: .76rem;
+  }
+
+  .heatmap-header,
+  .heatmap-row-label {
+    background: #f8fafc;
+    color: #334155;
+    font-weight: 700;
+  }
+
+  .heatmap-header {
+    min-height: 3.2rem;
+    justify-content: center;
+    align-items: center;
+    overflow: visible;
+    padding: .4rem .5rem;
+  }
+
+  .heatmap-header span {
+    display: inline-block;
+    max-width: 8rem;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.15;
+  }
+
+  .heatmap-row-label {
+    justify-content: flex-start;
+    min-width: 10rem;
+  }
+
+  .heatmap-cell {
+    color: #0f172a;
+    font-weight: 800;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid lesiones-shell">
+  <section class="lesiones-panel p-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+      <div>
+        <h1 class="lesiones-title mb-1">Analisis grupal</h1>
+        <p class="text-muted mb-0">
+          Lectura agregada de lesiones por plantel.
+          {% if period_label %}<span class="fw-semibold">{{ period_label }}</span>{% endif %}
+        </p>
+      </div>
+      <div class="d-flex gap-2">
+        <a class="btn btn-outline-primary btn-sm" href="{{ url_for('dashboard_lesiones.individual', plantel=plantel, posicion=filters.posicion or None, tipo=filters.tipo or None) }}">
+          Analisis individual
+        </a>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('dashboard_lesiones.index', plantel=plantel, period=period) }}">
+          Volver a inicio
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="lesiones-panel p-4 mb-4">
+    <form method="get" class="row g-3 align-items-end">
+      <div class="col-12 col-lg-3">
+        <label for="plantel" class="form-label">Plantel</label>
+        <select id="plantel" name="plantel" class="form-select" onchange="this.form.submit()">
+          {% for competition in competitions %}
+            <option value="{{ competition.codigo }}" {% if plantel == competition.codigo|string %}selected{% endif %}>
+              {{ competition.nombre }}{% if competition.codigo %} ({{ competition.codigo }}){% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-sm-6 col-lg-2">
+        <label for="posicion" class="form-label">Posicion</label>
+        <select id="posicion" name="posicion" class="form-select" onchange="this.form.submit()">
+          <option value="">Todas</option>
+          {% for option in filters.posiciones %}
+            <option value="{{ option }}" {% if filters.posicion == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-sm-6 col-lg-2">
+        <label for="tipo" class="form-label">Tipo de lesion</label>
+        <select id="tipo" name="tipo" class="form-select" onchange="this.form.submit()">
+          <option value="">Todas</option>
+          {% for option in filters.tipos %}
+            <option value="{{ option }}" {% if filters.tipo == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-sm-6 col-lg-2">
+        <label for="period" class="form-label">Rango rapido</label>
+        <select id="period" name="period" class="form-select" onchange="this.form.submit()">
+          {% for option in period_options %}
+            <option value="{{ option.key }}" {% if period == option.key %}selected{% endif %}>{{ option.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-sm-6 col-lg-3 d-flex gap-2">
+        <button type="submit" class="btn btn-primary flex-fill">Filtrar</button>
+        <a class="btn btn-outline-secondary" href="{{ url_for('dashboard_lesiones.grupal') }}">Limpiar</a>
+      </div>
+
+      <div class="col-12 col-sm-6 col-lg-3">
+        <label for="start_date" class="form-label">Desde</label>
+        <input
+          id="start_date"
+          name="start_date"
+          type="date"
+          class="form-control"
+          value="{{ custom_start.isoformat() if custom_start else '' }}"
+          onchange="this.form.submit()"
+          {% if period != 'personalizado' %}disabled{% endif %}
+        >
+      </div>
+
+      <div class="col-12 col-sm-6 col-lg-3">
+        <label for="end_date" class="form-label">Hasta</label>
+        <input
+          id="end_date"
+          name="end_date"
+          type="date"
+          class="form-control"
+          value="{{ custom_end.isoformat() if custom_end else '' }}"
+          onchange="this.form.submit()"
+          {% if period != 'personalizado' %}disabled{% endif %}
+        >
+      </div>
+
+      <div class="col-12">
+        <div class="small text-muted">
+          Rango actual:
+          {% if start_date and end_date %}
+            {{ start_date.strftime('%d/%m/%Y') }} - {{ end_date.strftime('%d/%m/%Y') }}
+          {% else %}
+            Sin fechas disponibles
+          {% endif %}
+        </div>
+      </div>
+    </form>
+  </section>
+
+  <section class="lesiones-panel p-4 mb-4">
+    {% if all_records_count == 0 %}
+      <div class="alert alert-warning mb-0">No hay lesiones disponibles para este plantel.</div>
+    {% elif filtered_records_count == 0 %}
+      <div class="alert alert-info mb-0">No hay lesiones para los filtros seleccionados.</div>
+    {% elif period_records_count == 0 %}
+      <div class="alert alert-info mb-0">No hay lesiones registradas en el periodo seleccionado.</div>
+    {% else %}
+      <div class="row g-3">
+        {% for kpi in kpis %}
+          <div class="col-12 col-sm-6 col-lg-4 col-xxl-2">
+            <div class="metric-card p-3">
+              <div class="metric-label">{{ kpi.label }}</div>
+              <div class="metric-value">{{ kpi.value }}</div>
+              {% if kpi.delta %}
+                {% set delta_text = kpi.delta|string %}
+                <div class="mt-2">
+                  <span class="metric-delta {% if delta_text.startswith('+') %}metric-delta-up{% elif delta_text.startswith('-') %}metric-delta-down{% else %}metric-delta-flat{% endif %}">
+                    {{ kpi.delta }}
+                  </span>
+                </div>
+              {% endif %}
+              <div class="metric-hint mt-2">{{ kpi.hint }}</div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="lesiones-panel p-4" id="lesiones-grupal-tabs-block" style="scroll-margin-top: 1rem;">
+    <ul class="nav nav-tabs" id="lesionesGrupalTabs" role="tablist">
+      {% for tab in [
+        ('evolucion', 'Evolucion'),
+        ('distribucion', 'Distribucion'),
+        ('impacto', 'Impacto'),
+        ('jugadoras', 'Jugadoras'),
+        ('tipo-especifico', 'Tipo especifico'),
+        ('recidivas', 'Recidivas'),
+        ('registros', 'Registros')
+      ] %}
+        <li class="nav-item" role="presentation">
+          <button
+            class="nav-link {% if active_tab == tab[0] %}active{% endif %}"
+            id="{{ tab[0] }}-tab"
+            data-bs-toggle="tab"
+            data-bs-target="#{{ tab[0] }}"
+            type="button"
+            role="tab"
+            aria-controls="{{ tab[0] }}"
+            aria-selected="{{ 'true' if active_tab == tab[0] else 'false' }}"
+          >
+            {{ tab[1] }}
+          </button>
+        </li>
+      {% endfor %}
+    </ul>
+
+    <div class="tab-content pt-4">
+      <div class="tab-pane fade {% if active_tab == 'evolucion' %}show active{% endif %} tab-pane-shell" id="evolucion" role="tabpanel" aria-labelledby="evolucion-tab">
+        {% if evolution_charts.summary.labels %}
+          <div class="position-relative mb-4" style="height:390px;">
+            <canvas
+              id="evolucionResumenChart"
+              data-chart='{{ evolution_charts.summary | tojson }}'
+            ></canvas>
+          </div>
+          <div class="row g-4">
+            <div class="col-12 col-xl-6">
+              <div class="position-relative" style="height:330px;">
+                <canvas
+                  id="evolucionDiasBajaChart"
+                  data-chart='{{ evolution_charts.dias_baja | tojson }}'
+                ></canvas>
+              </div>
+            </div>
+            <div class="col-12 col-xl-6">
+              <div class="position-relative" style="height:330px;">
+                <canvas
+                  id="evolucionNuevasRecidivasChart"
+                  data-chart='{{ evolution_charts.nuevas_recidivas | tojson }}'
+                ></canvas>
+              </div>
+            </div>
+          </div>
+        {% else %}
+          <div class="alert alert-info mb-0">Sin datos suficientes.</div>
+        {% endif %}
+      </div>
+
+      <div class="tab-pane fade {% if active_tab == 'distribucion' %}show active{% endif %} tab-pane-shell" id="distribucion" role="tabpanel" aria-labelledby="distribucion-tab">
+        {% if distribution_charts.tipo_severidad.labels %}
+          <div class="position-relative mb-4" style="height:480px;">
+            <canvas id="distribucionTipoSeveridadChart" data-chart='{{ distribution_charts.tipo_severidad | tojson }}'></canvas>
+          </div>
+          <div class="position-relative mb-4" style="height:420px;">
+            <canvas id="distribucionLugarMecanismoChart" data-chart='{{ distribution_charts.lugar_mecanismo | tojson }}'></canvas>
+          </div>
+          <div class="position-relative" style="height:460px;">
+            <canvas id="distribucionTipoRecidivaChart" data-chart='{{ distribution_charts.tipo_recidiva | tojson }}'></canvas>
+          </div>
+        {% else %}
+          <div class="alert alert-info mb-0">Sin datos suficientes.</div>
+        {% endif %}
+      </div>
+
+      <div class="tab-pane fade {% if active_tab == 'impacto' %}show active{% endif %} tab-pane-shell" id="impacto" role="tabpanel" aria-labelledby="impacto-tab">
+        {% if impact_charts.tipo_zona.labels %}
+          <div class="position-relative mb-4" style="height:520px;">
+            <canvas id="impactoTipoZonaChart" data-chart='{{ impact_charts.tipo_zona | tojson }}'></canvas>
+          </div>
+
+          <form method="get" class="row g-3 align-items-end mb-3" action="{{ url_for('dashboard_lesiones.grupal') }}#impacto-detalle" data-active-tab="impacto" data-scroll-target="impacto-detalle">
+            <input type="hidden" name="plantel" value="{{ plantel }}">
+            <input type="hidden" name="posicion" value="{{ filters.posicion }}">
+            <input type="hidden" name="tipo" value="{{ filters.tipo }}">
+            <input type="hidden" name="period" value="{{ period }}">
+            <input type="hidden" name="active_tab" value="impacto">
+            {% if custom_start %}<input type="hidden" name="start_date" value="{{ custom_start.isoformat() }}">{% endif %}
+            {% if custom_end %}<input type="hidden" name="end_date" value="{{ custom_end.isoformat() }}">{% endif %}
+
+            <div class="col-12 col-md-6">
+              <label for="impact_tipo" class="form-label">Tipo de lesion</label>
+              <select id="impact_tipo" name="impact_tipo" class="form-select" onchange="this.form.submit()">
+                <option value="">Todas</option>
+                {% for option in impact_charts.filters.tipos %}
+                  <option value="{{ option }}" {% if impact_charts.filters.tipo == option %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label for="impact_zona" class="form-label">Zona corporal</label>
+              <select id="impact_zona" name="impact_zona" class="form-select" onchange="this.form.submit()">
+                <option value="">Todas</option>
+                {% for option in impact_charts.filters.zonas %}
+                  <option value="{{ option }}" {% if impact_charts.filters.zona == option %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </form>
+
+          <div id="impacto-detalle" style="scroll-margin-top: 1rem;"></div>
+          {% if impact_charts.detalle.labels %}
+            <div class="position-relative" style="height:420px;">
+              <canvas id="impactoDetalleChart" data-chart='{{ impact_charts.detalle | tojson }}'></canvas>
+            </div>
+          {% else %}
+            <div class="alert alert-info mb-0">Sin datos suficientes.</div>
+          {% endif %}
+        {% else %}
+          <div class="alert alert-info mb-0">Sin datos suficientes.</div>
+        {% endif %}
+      </div>
+
+      <div class="tab-pane fade {% if active_tab == 'jugadoras' %}show active{% endif %} tab-pane-shell" id="jugadoras" role="tabpanel" aria-labelledby="jugadoras-tab">
+        {% if players_scatter.points %}
+          <div class="position-relative" style="height:520px;">
+            <canvas id="jugadorasScatterChart" data-chart='{{ players_scatter | tojson }}'></canvas>
+          </div>
+        {% else %}
+          <div class="alert alert-info mb-0">Sin datos suficientes.</div>
+        {% endif %}
+      </div>
+
+      <div class="tab-pane fade {% if active_tab == 'tipo-especifico' %}show active{% endif %} tab-pane-shell" id="tipo-especifico" role="tabpanel" aria-labelledby="tipo-especifico-tab">
+        {% if specific_type_heatmap.rows and specific_type_heatmap.specifics %}
+          <h2 class="h6 text-center fw-bold mb-3">Relación entre tipo de lesión y tipo específico</h2>
+          <div class="heatmap-wrap">
+            <div
+              class="heatmap-grid"
+              style="grid-template-columns: 10rem repeat({{ specific_type_heatmap.specifics|length }}, minmax(5.5rem, 1fr));"
+            >
+              <div class="heatmap-row-label">Tipo de lesión</div>
+              {% for tipo_especifico in specific_type_heatmap.specifics %}
+                <div class="heatmap-header" title="{{ tipo_especifico }}"><span>{{ tipo_especifico }}</span></div>
+              {% endfor %}
+
+              {% for row in specific_type_heatmap.rows %}
+                <div class="heatmap-row-label" title="{{ row.tipo_lesion }}">{{ row.tipo_lesion }}</div>
+                {% for cell in row.cells %}
+                  {% set alpha = 0.08 + (cell.intensity * 0.82) %}
+                  <div
+                    class="heatmap-cell"
+                    style="background-color: rgba(13, 110, 253, {{ '%.3f'|format(alpha) }}); color: {% if cell.intensity > 0.65 %}#ffffff{% else %}#0f172a{% endif %};"
+                    title="{{ row.tipo_lesion }} / {{ cell.tipo_especifico }}: {{ cell.value }} lesiones"
+                  >
+                    {% if cell.value %}{{ cell.value }}{% endif %}
+                  </div>
+                {% endfor %}
+              {% endfor %}
+            </div>
+          </div>
+          <div class="d-flex justify-content-between small text-muted mt-2">
+            <span>Tipo específico</span>
+            <span>Número de lesiones</span>
+          </div>
+        {% else %}
+          <div class="alert alert-info mb-0">Sin datos suficientes.</div>
+        {% endif %}
+      </div>
+
+      <div class="tab-pane fade {% if active_tab == 'recidivas' %}show active{% endif %} tab-pane-shell" id="recidivas" role="tabpanel" aria-labelledby="recidivas-tab">
+        {% if distribution_charts.tipo_recidiva.labels %}
+          <h2 class="h6 text-center fw-bold mb-3">Relaci&oacute;n entre tipo de lesi&oacute;n y recidiva</h2>
+          <div class="position-relative mb-4" style="height:460px;">
+            <canvas id="recidivasTipoRecidivaChart" data-chart='{{ distribution_charts.tipo_recidiva | tojson }}'></canvas>
+          </div>
+        {% else %}
+          <div class="alert alert-info mb-4">Sin datos suficientes.</div>
+        {% endif %}
+
+        {% if recurrence_type_heatmap.rows and recurrence_type_heatmap.recurrences %}
+          <h2 class="h6 text-center fw-bold mb-3">Recidivas tempranas y tardías por tipo de lesión</h2>
+          <div class="heatmap-wrap">
+            <div
+              class="heatmap-grid"
+              style="grid-template-columns: 10rem repeat({{ recurrence_type_heatmap.recurrences|length }}, minmax(8.5rem, 1fr));"
+            >
+              <div class="heatmap-row-label">Tipo de lesión</div>
+              {% for tipo_recidiva in recurrence_type_heatmap.recurrences %}
+                <div class="heatmap-header" title="{{ tipo_recidiva }}"><span>{{ tipo_recidiva }}</span></div>
+              {% endfor %}
+
+              {% for row in recurrence_type_heatmap.rows %}
+                <div class="heatmap-row-label" title="{{ row.tipo_lesion }}">{{ row.tipo_lesion }}</div>
+                {% for cell in row.cells %}
+                  {% set alpha = 0.08 + (cell.intensity * 0.82) %}
+                  <div
+                    class="heatmap-cell"
+                    style="background-color: rgba(220, 53, 69, {{ '%.3f'|format(alpha) }}); color: {% if cell.intensity > 0.65 %}#ffffff{% else %}#0f172a{% endif %};"
+                    title="{{ row.tipo_lesion }} / {{ cell.tipo_recidiva }}: {{ cell.value }} lesiones"
+                  >
+                    {% if cell.value %}{{ cell.value }}{% endif %}
+                  </div>
+                {% endfor %}
+              {% endfor %}
+            </div>
+          </div>
+          <div class="d-flex justify-content-between small text-muted mt-2">
+            <span>Tipo de recidiva</span>
+            <span>Número de lesiones</span>
+          </div>
+        {% else %}
+          <div class="alert alert-info mb-0">Sin datos suficientes.</div>
+        {% endif %}
+      </div>
+
+      <div class="tab-pane fade {% if active_tab == 'registros' %}show active{% endif %} tab-pane-shell" id="registros" role="tabpanel" aria-labelledby="registros-tab">
+        <form method="get" class="row g-3 align-items-end mb-3" action="{{ url_for('dashboard_lesiones.grupal') }}#registros-filtros" data-active-tab="registros" data-scroll-target="registros-filtros">
+          <input type="hidden" name="plantel" value="{{ plantel }}">
+          <input type="hidden" name="posicion" value="{{ filters.posicion }}">
+          <input type="hidden" name="tipo" value="{{ filters.tipo }}">
+          <input type="hidden" name="period" value="{{ period }}">
+          <input type="hidden" name="active_tab" value="registros">
+          {% if custom_start %}<input type="hidden" name="start_date" value="{{ custom_start.isoformat() }}">{% endif %}
+          {% if custom_end %}<input type="hidden" name="end_date" value="{{ custom_end.isoformat() }}">{% endif %}
+
+          <div id="registros-filtros" class="col-12 col-md-6" style="scroll-margin-top: 1rem;">
+            <label for="registro_estado" class="form-label">Filtrar por estado</label>
+            <select id="registro_estado" name="registro_estado" class="form-select" onchange="this.form.submit()">
+              <option value="">TODOS</option>
+              {% for option in record_filters.estados %}
+                <option value="{{ option }}" {% if record_filters.estado == option %}selected{% endif %}>{{ option }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="col-12 col-md-6">
+            <label for="registro_severidad" class="form-label">Filtrar por severidad</label>
+            <select id="registro_severidad" name="registro_severidad" class="form-select" onchange="this.form.submit()">
+              <option value="">TODAS</option>
+              {% for option in record_filters.severidades %}
+                <option value="{{ option }}" {% if record_filters.severidad == option %}selected{% endif %}>{{ option }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </form>
+
+        {% if records %}
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Jugadora</th>
+                  <th>ID lesion</th>
+                  <th>Fecha lesion</th>
+                  <th>Zona</th>
+                  <th>Zona especifica</th>
+                  <th>Tipo lesion</th>
+                  <th>Tipo especifico</th>
+                  <th>Mecanismo</th>
+                  <th>Lugar</th>
+                  <th>Dias baja</th>
+                  <th>Gravedad</th>
+                  <th>Recidiva</th>
+                  <th>Estado</th>
+                  <th>Reporta</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for record in records %}
+                  <tr>
+                    <td class="fw-semibold">
+                      {% if record.id_jugadora %}
+                        <a href="{{ url_for('dashboard_lesiones.individual', jugadora=record.id_jugadora, plantel=plantel) }}">
+                          {{ record.nombre_jugadora or "-" }}
+                        </a>
+                      {% else %}
+                        {{ record.nombre_jugadora or "-" }}
+                      {% endif %}
+                    </td>
+                    <td>{{ record.id_lesion or "-" }}</td>
+                    <td>{{ record.fecha_lesion.strftime('%Y-%m-%d') if record.fecha_lesion else "-" }}</td>
+                    <td>{{ record.zona_cuerpo or "-" }}</td>
+                    <td>{{ record.zona_especifica or "-" }}</td>
+                    <td>{{ record.tipo_lesion or "-" }}</td>
+                    <td>{{ record.tipo_especifico or "-" }}</td>
+                    <td>{{ record.mecanismo or "-" }}</td>
+                    <td>{{ record.lugar or "-" }}</td>
+                    <td>{{ record.dias_baja_estimado if record.dias_baja_estimado is not none else "-" }}</td>
+                    <td>{{ record.impacto_dias_baja_estimado or "-" }}</td>
+                    <td>{{ "Si" if record.es_recidiva else "No" }}</td>
+                    <td>
+                      {% set status = record.estado_lesion or "" %}
+                      <span class="status-pill {% if status == 'ACTIVO' %}status-activo{% elif status == 'INACTIVO' %}status-inactivo{% else %}status-default{% endif %}">
+                        {{ status or "-" }}
+                      </span>
+                    </td>
+                    <td>{{ record.personal_reporta or "-" }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="alert alert-info mb-0">Sin registros para los filtros seleccionados.</div>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  if (!window.Chart) return;
+
+  Chart.defaults.font.family = "'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif";
+  Chart.defaults.plugins.title.align = 'center';
+  Chart.defaults.plugins.title.color = '#111827';
+  Chart.defaults.plugins.title.font = { size: 16, weight: '700' };
+
+  function parsedChart(id) {
+    const canvas = document.getElementById(id);
+    if (!canvas) return null;
+    const data = JSON.parse(canvas.dataset.chart || '{}');
+    if ((!data.labels || !data.labels.length) && (!data.points || !data.points.length)) return null;
+    return { canvas, data };
+  }
+
+  const severityColors = {
+    'SIN BAJA': '#92b1ce',
+    'LEVE': '#2ecc71',
+    'MODERADA': '#f1c40f',
+    'GRAVE': '#f39c12',
+    'MUY GRAVE': '#e74c3c',
+    'N/A': '#f1f8f8'
+  };
+  const caseColors = { 'Nueva': '#9ecae1', 'Recidiva': '#d62728' };
+  const palette = ['#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f', '#edc948', '#b07aa1', '#ff9da7', '#9c755f', '#bab0ab'];
+
+  function coloredDatasets(datasets, colorMap, showSegmentLabels) {
+    return (datasets || []).map(function (dataset, index) {
+      const color = dataset.backgroundColor || colorMap[dataset.label] || palette[index % palette.length];
+      return { ...dataset, backgroundColor: color, valueLabels: Boolean(showSegmentLabels) };
+    });
+  }
+
+  function stackedBar(id, title, xTitle, yTitle, colorMap, horizontal, showSegmentLabels) {
+    const chart = parsedChart(id);
+    if (!chart) return;
+    const axisMax = stackedAxisMax(chart.data.datasets, horizontal);
+    new Chart(chart.canvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: chart.data.labels,
+        datasets: coloredDatasets(chart.data.datasets, colorMap || {}, showSegmentLabels)
+      },
+      options: {
+        indexAxis: horizontal ? 'y' : 'x',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          title: { display: Boolean(title), text: title },
+          legend: { position: 'bottom' }
+        },
+        layout: { padding: { top: 24, right: horizontal ? 28 : 12 } },
+        scales: {
+          x: { stacked: true, beginAtZero: true, suggestedMax: horizontal ? axisMax : undefined, title: { display: Boolean(xTitle), text: xTitle } },
+          y: { stacked: true, beginAtZero: true, suggestedMax: horizontal ? undefined : axisMax, title: { display: Boolean(yTitle), text: yTitle } }
+        }
+      },
+      plugins: showSegmentLabels ? [barValueLabels] : []
+    });
+  }
+
+  const barValueLabels = {
+    id: 'barValueLabels',
+    afterDatasetsDraw(chart) {
+      const { ctx } = chart;
+      ctx.save();
+      ctx.font = '700 11px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      chart.data.datasets.forEach(function (dataset, datasetIndex) {
+        if (!dataset.valueLabels) return;
+        const meta = chart.getDatasetMeta(datasetIndex);
+        if (!meta || meta.hidden) return;
+
+        meta.data.forEach(function (bar, index) {
+          const value = Number(dataset.data[index]) || 0;
+          if (value <= 0) return;
+
+          const props = bar.getProps(['x', 'y', 'base', 'width', 'height'], true);
+          const horizontal = chart.options.indexAxis === 'y';
+          const segmentSize = horizontal ? Math.abs(props.x - props.base) : Math.abs(props.y - props.base);
+          const crossSize = horizontal ? props.height : props.width;
+          if (segmentSize < 16 || crossSize < 12) return;
+
+          const x = horizontal ? (props.x + props.base) / 2 : props.x;
+          const y = horizontal ? props.y : (props.y + props.base) / 2;
+          ctx.fillStyle = '#111827';
+          ctx.fillText(String(value), x, y);
+        });
+      });
+      ctx.restore();
+    }
+  };
+
+  function maxValue(values) {
+    return Math.max(0, ...(values || []).map(function (value) { return Number(value) || 0; }));
+  }
+
+  function suggestedMax(values, factor) {
+    const max = maxValue(values);
+    return max ? Math.ceil(max * (factor || 1.18)) : undefined;
+  }
+
+  function stackedAxisMax(datasets) {
+    const totals = [];
+    (datasets || []).forEach(function (dataset) {
+      (dataset.data || []).forEach(function (value, index) {
+        totals[index] = (totals[index] || 0) + (Number(value) || 0);
+      });
+    });
+    return suggestedMax(totals, 1.16);
+  }
+
+  const resumen = parsedChart('evolucionResumenChart');
+  if (resumen) {
+    new Chart(resumen.canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: resumen.data.labels,
+      datasets: [
+        { label: 'Lesiones registradas', data: resumen.data.lesiones, backgroundColor: 'rgba(76, 120, 168, .72)', order: 2 },
+        { label: 'Jugadoras lesionadas', data: resumen.data.jugadoras, borderColor: '#7f8c8d', backgroundColor: '#7f8c8d', type: 'line', tension: .25, order: 1, valueLabels: false },
+        { label: 'Lesiones graves', data: resumen.data.graves, borderColor: '#f39c12', backgroundColor: '#f39c12', type: 'line', tension: .25, order: 1, valueLabels: false },
+        { label: 'Lesiones muy graves', data: resumen.data.muy_graves, borderColor: '#e74c3c', backgroundColor: '#e74c3c', type: 'line', tension: .25, order: 1, valueLabels: false }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+        plugins: {
+          title: { display: true, text: 'Evolución de lesiones, jugadoras lesionadas y lesiones graves' },
+          legend: { position: 'bottom' },
+          tooltip: { mode: 'index', intersect: false }
+        },
+      layout: { padding: { top: 24, right: 12 } },
+      scales: {
+        y: {
+          beginAtZero: true,
+          suggestedMax: suggestedMax([].concat(resumen.data.lesiones || [], resumen.data.jugadoras || [], resumen.data.graves || [], resumen.data.muy_graves || [])),
+          ticks: { precision: 0 }
+        }
+      }
+    }
+  });
+  }
+
+  const diasBaja = parsedChart('evolucionDiasBajaChart');
+  if (diasBaja) {
+    new Chart(diasBaja.canvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: diasBaja.data.labels,
+        datasets: [{
+          label: 'Dias de baja',
+          data: diasBaja.data.values,
+          backgroundColor: 'rgba(13, 110, 253, .70)'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          title: { display: true, text: 'Evolución de días de baja estimados' }
+        },
+        layout: { padding: { top: 24, right: 12 } },
+        scales: { y: { beginAtZero: true, suggestedMax: suggestedMax(diasBaja.data.values) } }
+      }
+    });
+  }
+
+  const nuevasRecidivas = parsedChart('evolucionNuevasRecidivasChart');
+  if (nuevasRecidivas) {
+    new Chart(nuevasRecidivas.canvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: nuevasRecidivas.data.labels,
+        datasets: [
+          { label: 'Nueva', data: nuevasRecidivas.data.nuevas, backgroundColor: '#9ecae1' },
+          { label: 'Recidiva', data: nuevasRecidivas.data.recidivas, backgroundColor: '#d62728' }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          title: { display: true, text: 'Evolución de nuevas lesiones vs recidivas' }
+        },
+        layout: { padding: { top: 24, right: 12 } },
+        scales: {
+          x: { stacked: true },
+          y: { stacked: true, beginAtZero: true, suggestedMax: stackedAxisMax([
+            { data: nuevasRecidivas.data.nuevas },
+            { data: nuevasRecidivas.data.recidivas }
+          ]), ticks: { precision: 0 } }
+        }
+      }
+    });
+  }
+
+  stackedBar(
+    'distribucionTipoSeveridadChart',
+    'Tipo de lesión por severidad',
+    'Número de lesiones',
+    '',
+    severityColors,
+    true,
+    true
+  );
+
+  stackedBar(
+    'distribucionLugarMecanismoChart',
+    'Lugar de ocurrencia por mecanismo',
+    '',
+    'Número de lesiones',
+    {},
+    false,
+    true
+  );
+
+  stackedBar(
+    'distribucionTipoRecidivaChart',
+    'Tipo de lesión por recidiva',
+    'Número de lesiones',
+    '',
+    caseColors,
+    true,
+    true
+  );
+
+  stackedBar(
+    'recidivasTipoRecidivaChart',
+    '',
+    'N\u00famero de lesiones',
+    '',
+    caseColors,
+    true,
+    true
+  );
+
+  stackedBar(
+    'impactoTipoZonaChart',
+    'Días de baja acumulados por tipo de lesión y zona corporal',
+    'Días de baja',
+    '',
+    {},
+    true,
+    true
+  );
+
+  const impactoDetalle = parsedChart('impactoDetalleChart');
+  if (impactoDetalle) {
+    const detalleTitle = [
+      'Detalle por zona específica',
+      document.getElementById('impact_tipo')?.value || '',
+      document.getElementById('impact_zona')?.value || ''
+    ].filter(Boolean).join(' - ');
+    new Chart(impactoDetalle.canvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: impactoDetalle.data.labels,
+        datasets: [{
+          label: 'Días de baja',
+          data: impactoDetalle.data.values,
+          backgroundColor: impactoDetalle.data.colors,
+          valueLabels: true
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          title: { display: true, text: detalleTitle }
+        },
+        layout: { padding: { top: 24, right: 34 } },
+        scales: {
+          x: { beginAtZero: true, suggestedMax: suggestedMax(impactoDetalle.data.values, 1.22), title: { display: true, text: 'Días de baja' } },
+          y: { title: { display: false } }
+        }
+      },
+      plugins: [barValueLabels]
+    });
+  }
+
+  Chart.register({
+    id: 'playerLabels',
+    afterDatasetsDraw(chart) {
+      if (chart.canvas.id !== 'jugadorasScatterChart') return;
+      const ctx = chart.ctx;
+      ctx.save();
+      ctx.font = "700 11px 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif";
+      ctx.fillStyle = '#111827';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      chart.data.datasets.forEach(function (dataset, datasetIndex) {
+        const meta = chart.getDatasetMeta(datasetIndex);
+        if (meta.hidden) return;
+        meta.data.forEach(function (point, index) {
+          const item = dataset.data[index] || {};
+          if (!item.jugadora) return;
+          const pos = point.tooltipPosition();
+          ctx.fillText(item.jugadora, pos.x, pos.y - 8);
+        });
+      });
+      ctx.restore();
+    }
+  });
+
+  const jugadorasScatter = parsedChart('jugadorasScatterChart');
+  if (jugadorasScatter) {
+    const points = jugadorasScatter.data.points || [];
+    new Chart(jugadorasScatter.canvas.getContext('2d'), {
+      type: 'scatter',
+      data: {
+        datasets: [{
+          label: 'Jugadoras',
+          data: points,
+          parsing: false,
+          backgroundColor: 'rgba(13, 110, 253, .72)',
+          borderColor: '#0d6efd',
+          pointRadius: 5,
+          pointHoverRadius: 7
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          title: { display: true, text: 'Jugadoras: número de lesiones vs días de baja acumulados' },
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function (context) {
+                const item = context.raw || {};
+                return [
+                  item.jugadora || 'N/A',
+                  'Lesiones: ' + (item.x ?? 0),
+                  'Días de baja: ' + (item.y ?? 0)
+                ];
+              }
+            }
+          }
+        },
+        layout: { padding: { top: 24, right: 12 } },
+        scales: {
+          x: {
+            beginAtZero: true,
+            suggestedMax: suggestedMax(points.map(function (point) { return point.x; })),
+            title: { display: true, text: 'Número de lesiones' },
+            ticks: { precision: 0 }
+          },
+          y: {
+            beginAtZero: true,
+            suggestedMax: suggestedMax(points.map(function (point) { return point.y; })),
+            title: { display: true, text: 'Días de baja' }
+          }
+        }
+      }
+    });
+  }
+
+  document.querySelectorAll('#lesionesGrupalTabs button[data-bs-toggle="tab"]').forEach(function (button) {
+    button.addEventListener('shown.bs.tab', function (event) {
+      const tab = event.target.getAttribute('data-bs-target')?.replace('#', '');
+      if (!tab) return;
+      const url = new URL(window.location.href);
+      url.searchParams.set('active_tab', tab);
+      window.history.replaceState({}, '', url.toString());
+    });
+  });
+
+  document.querySelectorAll('form[data-active-tab]').forEach(function (form) {
+    form.addEventListener('submit', function () {
+      const activeTab = form.dataset.activeTab;
+      if (!activeTab) return;
+      let input = form.querySelector('input[name="active_tab"]');
+      if (!input) {
+        input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'active_tab';
+        form.appendChild(input);
+      }
+      input.value = activeTab;
+      const target = form.dataset.scrollTarget || 'lesiones-grupal-tabs-block';
+      if (!form.action.includes('#')) {
+        form.action = form.action + '#' + target;
+      }
+    });
+  });
+
+  const url = new URL(window.location.href);
+  const activeTab = url.searchParams.get('active_tab');
+  const hashTarget = window.location.hash ? window.location.hash.slice(1) : '';
+  if (hashTarget) {
+    setTimeout(function () {
+      document.getElementById(hashTarget)?.scrollIntoView({ block: 'start' });
+    }, 80);
+  } else if (activeTab && activeTab !== 'evolucion') {
+    setTimeout(function () {
+      document.getElementById('lesiones-grupal-tabs-block')?.scrollIntoView({ block: 'start' });
+    }, 80);
+  }
+});
+</script>
+{% endblock %}
