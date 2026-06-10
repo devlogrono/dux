@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 
-from flask import Blueprint, redirect, render_template, request, url_for
+from flask import Blueprint, abort, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import bindparam, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -18,6 +18,8 @@ PERIOD_OPTIONS = [
 ]
 DEFAULT_PERIOD = "30"
 DEFAULT_PLANTEL = "1FF"
+WELLNESS_ADMIN_ROLE_IDS = {"1", "6"}
+WELLNESS_ADMIN_ROLE_NAMES = {"admin", "developer"}
 
 
 def _user_cache_key():
@@ -233,6 +235,27 @@ def _parse_int(value):
         return None
 
 
+def _current_user_name():
+    return (
+        getattr(current_user, "name", None)
+        or getattr(current_user, "email", None)
+        or "unknown"
+    )
+
+
+def _can_manage_wellness_records():
+    role_id = getattr(current_user, "role_id", None)
+    if role_id is not None and str(role_id) in WELLNESS_ADMIN_ROLE_IDS:
+        return True
+
+    role = getattr(current_user, "role", None)
+    role_name = getattr(role, "name", None)
+    if role_name and role_name.lower() in WELLNESS_ADMIN_ROLE_NAMES:
+        return True
+
+    return False
+
+
 def _validate_checkin_form(form, available_jugadoras):
     errors = []
     available_ids = {jugadora["id"] for jugadora in available_jugadoras}
@@ -264,11 +287,7 @@ def _validate_checkin_form(form, available_jugadoras):
         "dolor": _parse_int(form.get("dolor")),
         "id_zona_segmento_dolor": _parse_int(form.get("id_zona_segmento_dolor")),
         "observacion": form.get("observacion") or "",
-        "usuario": (
-            getattr(current_user, "name", None)
-            or getattr(current_user, "email", None)
-            or "unknown"
-        ),
+        "usuario": _current_user_name(),
     }
 
     for field in ["recuperacion", "fatiga", "sueno", "stress", "dolor"]:
@@ -381,11 +400,7 @@ def _validate_checkout_form(form, available_jugadoras):
         "minutos_sesion": minutos_sesion,
         "rpe": rpe,
         "ua": minutos_sesion * rpe if minutos_sesion is not None and rpe is not None else None,
-        "usuario": (
-            getattr(current_user, "name", None)
-            or getattr(current_user, "email", None)
-            or "unknown"
-        ),
+        "usuario": _current_user_name(),
     }
 
     return record, errors
@@ -428,11 +443,7 @@ def _validate_absence_form(form, available_jugadoras, absence_reasons):
         "motivo_id": _parse_int(motivo_id),
         "turno": turno,
         "observacion": form.get("ausencia_observacion") or "",
-        "usuario": (
-            getattr(current_user, "name", None)
-            or getattr(current_user, "email", None)
-            or "unknown"
-        ),
+        "usuario": _current_user_name(),
     }
 
     return record, errors
@@ -470,6 +481,27 @@ def _update_checkout(record):
     db.session.commit()
     cache.clear()
     return True
+
+
+def _soft_delete_wellness_record(record_id):
+    sql = """
+        UPDATE wellness
+        SET estatus_id = 3,
+            deleted_at = CURRENT_TIMESTAMP,
+            deleted_by = :deleted_by
+        WHERE id = :record_id
+          AND (estatus_id IS NULL OR estatus_id <= 2)
+    """
+    result = db.session.execute(
+        text(sql),
+        {
+            "record_id": record_id,
+            "deleted_by": _current_user_name(),
+        },
+    )
+    db.session.commit()
+    cache.clear()
+    return result.rowcount > 0
 
 
 def _fetch_wellness_records(planteles, jugadoras, tipos, since, limit=None):
@@ -719,6 +751,7 @@ def index():
         display_records=records[:200],
         summary=summary,
         charts=charts,
+        can_manage_wellness=_can_manage_wellness_records(),
     )
 
 
@@ -801,3 +834,17 @@ def registro():
         saved=saved,
         **options,
     )
+
+
+@bp.post("/admin/registros/<int:record_id>/delete/")
+@login_required
+def delete_record(record_id):
+    if not _can_manage_wellness_records():
+        abort(403)
+
+    try:
+        _soft_delete_wellness_record(record_id)
+    except SQLAlchemyError:
+        db.session.rollback()
+
+    return redirect(url_for("dashboard_wellness.index", saved="record-deleted"))

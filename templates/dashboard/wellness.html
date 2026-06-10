@@ -264,6 +264,10 @@
         <div class="alert alert-warning" role="alert">{{ error }}</div>
     {% endif %}
 
+    {% if request.args.get('saved') == 'record-deleted' %}
+        <div class="alert alert-success" role="alert">Registro Wellness eliminado correctamente.</div>
+    {% endif %}
+
     <div class="row g-3 mb-4">
         <div class="col-md-3">
             <div class="wellness-metric">
@@ -358,6 +362,9 @@
                             <th class="text-end">RPE</th>
                             <th class="text-end">UA</th>
                             <th>Usuario</th>
+                            {% if can_manage_wellness %}
+                                <th class="text-end">Acciones</th>
+                            {% endif %}
                         </tr>
                     </thead>
                     <tbody>
@@ -372,6 +379,15 @@
                                 <td class="text-end">{{ record.rpe if record.rpe is not none else '-' }}</td>
                                 <td class="text-end">{{ record.ua if record.ua is not none else '-' }}</td>
                                 <td>{{ record.usuario or '-' }}</td>
+                                {% if can_manage_wellness %}
+                                    <td class="text-end">
+                                        <div class="d-inline-flex gap-1">
+                                            <form method="post" action="{{ url_for('dashboard_wellness.delete_record', record_id=record.id) }}" onsubmit="return confirm('¿Eliminar este registro Wellness?');">
+                                                <button class="btn btn-outline-danger btn-sm" type="submit">Eliminar</button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                {% endif %}
                             </tr>
                         {% endfor %}
                     </tbody>

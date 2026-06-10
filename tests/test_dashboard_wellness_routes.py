@@ -44,6 +44,17 @@ class DashboardWellnessRouteTest(unittest.TestCase):
         )
         conn.execute(
             """
+            UPDATE users SET role_id = '1' WHERE id = 'test-user'
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO users (id, email, password_hash, role_id, state_id, name)
+            VALUES ('common-user', 'common@example.com', '', '3', 2, 'Common')
+            """
+        )
+        conn.execute(
+            """
             CREATE TABLE futbolistas (
                 identificacion TEXT PRIMARY KEY,
                 nombre TEXT,
@@ -75,7 +86,9 @@ class DashboardWellnessRouteTest(unittest.TestCase):
                 observacion TEXT,
                 fecha_hora_registro DATETIME,
                 usuario TEXT,
-                estatus_id INTEGER
+                estatus_id INTEGER,
+                deleted_at DATETIME,
+                deleted_by TEXT
             )
             """
         )
@@ -185,6 +198,7 @@ class DashboardWellnessRouteTest(unittest.TestCase):
         self.assertIn(b"Indicadores de bienestar", response.data)
         self.assertNotIn(b"Solo lectura", response.data)
         self.assertIn(b"Registro Wellness", response.data)
+        self.assertIn(b"Eliminar", response.data)
         self.assertIn(b"Test, Alexia", response.data)
         self.assertIn(b"1FF", response.data)
         self.assertIn(b"checkOut", response.data)
@@ -462,6 +476,55 @@ class DashboardWellnessRouteTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"La fecha final no puede ser menor", response.data)
         self.assertIn(b"Selecciona un motivo de ausencia", response.data)
+
+    def test_dashboard_wellness_delete_record_soft_deletes_wellness_record(self):
+        with self.client.session_transaction() as session:
+            session["_user_id"] = "test-user"
+            session["_fresh"] = True
+
+        response = self.client.post("/dashboard/wellness/admin/registros/1/delete/")
+
+        self.assertEqual(response.status_code, 302)
+
+        conn = sqlite3.connect(self.tmp.name)
+        row = conn.execute(
+            """
+            SELECT estatus_id, deleted_by, deleted_at
+            FROM wellness
+            WHERE id = 1
+            """
+        ).fetchone()
+        conn.close()
+
+        self.assertEqual(row[0], 3)
+        self.assertEqual(row[1], "Test")
+        self.assertIsNotNone(row[2])
+
+    def test_dashboard_wellness_common_user_cannot_delete_record(self):
+        with self.client.session_transaction() as session:
+            session["_user_id"] = "common-user"
+            session["_fresh"] = True
+
+        response = self.client.get("/dashboard/wellness/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"Eliminar", response.data)
+
+        response = self.client.post("/dashboard/wellness/admin/registros/1/delete/")
+
+        self.assertEqual(response.status_code, 403)
+
+        conn = sqlite3.connect(self.tmp.name)
+        row = conn.execute(
+            """
+            SELECT estatus_id, deleted_by, deleted_at
+            FROM wellness
+            WHERE id = 1
+            """
+        ).fetchone()
+        conn.close()
+
+        self.assertEqual(row, (2, None, None))
 
     def test_dashboard_wellness_route_applies_selected_plantel(self):
         with self.client.session_transaction() as session:
