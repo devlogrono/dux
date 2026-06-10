@@ -150,7 +150,8 @@ class DashboardWellnessRouteTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Wellness", response.data)
-        self.assertIn(b"Registros de Wellness y RPE", response.data)
+        self.assertIn(b"Indicadores de bienestar", response.data)
+        self.assertIn(b"Solo lectura", response.data)
         self.assertIn(b"Test, Alexia", response.data)
         self.assertIn(b"1FF", response.data)
         self.assertIn(b"checkOut", response.data)

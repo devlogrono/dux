@@ -2,20 +2,194 @@
 
 {% block title %}Wellness{% endblock %}
 
+{% block extra_css %}
+<style>
+    .wellness-page {
+        --wellness-surface: rgba(255, 255, 255, 0.94);
+        --wellness-border: rgba(15, 23, 42, 0.08);
+        --wellness-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+        --wellness-ink: #111827;
+        --wellness-muted: #6b7280;
+    }
+
+    .wellness-surface,
+    .wellness-metric,
+    .wellness-chart,
+    .wellness-table {
+        background: var(--wellness-surface);
+        border: 1px solid var(--wellness-border);
+        border-radius: 8px;
+        box-shadow: var(--wellness-shadow);
+        backdrop-filter: blur(6px);
+    }
+
+    .wellness-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 1.25rem;
+    }
+
+    .wellness-title {
+        color: var(--wellness-ink);
+        font-weight: 700;
+        letter-spacing: 0;
+    }
+
+    .wellness-subtitle {
+        color: var(--wellness-muted);
+        margin-bottom: 0;
+    }
+
+    .wellness-badge {
+        border: 1px solid rgba(25, 135, 84, 0.18);
+        background: rgba(25, 135, 84, 0.1);
+        color: #146c43;
+        border-radius: 999px;
+        font-weight: 600;
+        padding: 0.35rem 0.65rem;
+        white-space: nowrap;
+    }
+
+    .wellness-filter-label,
+    .wellness-section-label,
+    .wellness-metric-label {
+        color: var(--wellness-muted);
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+    }
+
+    .wellness-active-filter {
+        border: 1px solid rgba(13, 110, 253, 0.16);
+        background: rgba(13, 110, 253, 0.08);
+        color: #084298;
+        font-weight: 600;
+    }
+
+    .wellness-metric {
+        min-height: 132px;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+
+    .wellness-metric-value {
+        color: var(--wellness-ink);
+        font-size: 2rem;
+        font-weight: 750;
+        line-height: 1;
+    }
+
+    .wellness-metric-foot {
+        color: var(--wellness-muted);
+        font-size: 0.86rem;
+    }
+
+    .wellness-status {
+        display: inline-flex;
+        align-items: center;
+        width: fit-content;
+        border-radius: 999px;
+        padding: 0.2rem 0.55rem;
+        font-size: 0.78rem;
+        font-weight: 650;
+    }
+
+    .wellness-status-ok {
+        background: rgba(25, 135, 84, 0.12);
+        color: #146c43;
+    }
+
+    .wellness-status-mid {
+        background: rgba(255, 193, 7, 0.18);
+        color: #7a5a00;
+    }
+
+    .wellness-status-risk {
+        background: rgba(220, 53, 69, 0.12);
+        color: #b02a37;
+    }
+
+    .wellness-status-muted {
+        background: rgba(108, 117, 125, 0.12);
+        color: #5c636a;
+    }
+
+    .wellness-chart,
+    .wellness-table {
+        padding: 1rem;
+    }
+
+    .wellness-chart-canvas {
+        height: 260px;
+    }
+
+    .wellness-table table {
+        margin-bottom: 0;
+    }
+
+    .wellness-table thead th {
+        color: var(--wellness-muted);
+        font-size: 0.72rem;
+        letter-spacing: 0;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+
+    @media (max-width: 767.98px) {
+        .wellness-header {
+            flex-direction: column;
+        }
+
+        .wellness-metric {
+            min-height: 112px;
+        }
+
+        .wellness-metric-value {
+            font-size: 1.7rem;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container-fluid py-4">
-    <div class="rounded shadow-sm p-4 mb-4" style="background-color: rgba(255,255,255,0.92);">
-        <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
+<div class="container-fluid py-4 wellness-page">
+    {% set wellness_status_class = 'wellness-status-muted' %}
+    {% if summary.wellness_estado == 'óptimo' %}
+        {% set wellness_status_class = 'wellness-status-ok' %}
+    {% elif summary.wellness_estado == 'moderado' %}
+        {% set wellness_status_class = 'wellness-status-mid' %}
+    {% elif summary.wellness_estado == 'en fatiga' %}
+        {% set wellness_status_class = 'wellness-status-risk' %}
+    {% endif %}
+
+    {% set rpe_status_class = 'wellness-status-muted' %}
+    {% if summary.rpe_estado == 'bajo' %}
+        {% set rpe_status_class = 'wellness-status-ok' %}
+    {% elif summary.rpe_estado == 'moderado' %}
+        {% set rpe_status_class = 'wellness-status-mid' %}
+    {% elif summary.rpe_estado == 'alto' %}
+        {% set rpe_status_class = 'wellness-status-risk' %}
+    {% endif %}
+
+    {% set alerts_status_class = 'wellness-status-ok' if summary.alertas_count == 0 else 'wellness-status-risk' %}
+
+    <div class="wellness-surface p-4 mb-4">
+        <div class="wellness-header">
             <div>
-                <h1 class="h3 mb-1">Wellness</h1>
-                <p class="text-muted mb-0">Registros de Wellness y RPE cargados desde la base de datos.</p>
+                <h1 class="h3 mb-1 wellness-title">Wellness</h1>
+                <p class="wellness-subtitle">Indicadores de bienestar, esfuerzo percibido y carga interna.</p>
             </div>
-            <span class="badge text-bg-primary">Vista inicial</span>
+            <span class="wellness-badge">Solo lectura</span>
         </div>
 
         <form method="get" class="row g-3 align-items-end">
             <div class="col-md-2">
-                <label for="period" class="form-label">Periodo</label>
+                <label for="period" class="form-label wellness-filter-label">Periodo</label>
                 <select id="period" name="period" class="form-select">
                     {% for option in period_options %}
                         <option value="{{ option.id }}" {% if option.id == selected_period %}selected{% endif %}>
@@ -26,7 +200,7 @@
             </div>
 
             <div class="col-md-3">
-                <label for="plantel" class="form-label">Plantel</label>
+                <label for="plantel" class="form-label wellness-filter-label">Plantel</label>
                 <select id="plantel" name="plantel" class="form-select" multiple>
                     {% for plantel in planteles %}
                         <option value="{{ plantel }}" {% if plantel in selected_planteles %}selected{% endif %}>
@@ -37,7 +211,7 @@
             </div>
 
             <div class="col-md-4">
-                <label for="jugadora" class="form-label">Jugadora</label>
+                <label for="jugadora" class="form-label wellness-filter-label">Jugadora</label>
                 <select id="jugadora" name="jugadora" class="form-select" multiple>
                     {% for jugadora in visible_jugadoras %}
                         <option value="{{ jugadora.id }}" {% if jugadora.id in selected_jugadoras %}selected{% endif %}>
@@ -48,7 +222,7 @@
             </div>
 
             <div class="col-md-2">
-                <label for="tipo" class="form-label">Tipo</label>
+                <label for="tipo" class="form-label wellness-filter-label">Tipo</label>
                 <select id="tipo" name="tipo" class="form-select" multiple>
                     {% for tipo in tipos %}
                         <option value="{{ tipo }}" {% if tipo in selected_tipos %}selected{% endif %}>
@@ -69,15 +243,15 @@
 
         <div class="d-flex align-items-center flex-wrap gap-2 mt-3 small text-muted">
             <span>Filtros activos:</span>
-            <span class="badge text-bg-light">{{ days }} días</span>
+            <span class="badge wellness-active-filter">{{ days }} días</span>
             {% for plantel in selected_planteles %}
-                <span class="badge text-bg-light">Plantel {{ plantel }}</span>
+                <span class="badge wellness-active-filter">Plantel {{ plantel }}</span>
             {% endfor %}
             {% for tipo in selected_tipos %}
-                <span class="badge text-bg-light">{{ tipo }}</span>
+                <span class="badge wellness-active-filter">{{ tipo }}</span>
             {% endfor %}
             {% if selected_jugadoras %}
-                <span class="badge text-bg-light">{{ selected_jugadoras|length }} jugadora(s)</span>
+                <span class="badge wellness-active-filter">{{ selected_jugadoras|length }} jugadora(s)</span>
             {% endif %}
         </div>
     </div>
@@ -88,44 +262,50 @@
 
     <div class="row g-3 mb-4">
         <div class="col-md-3">
-            <div class="rounded shadow-sm p-3 h-100" style="background-color: rgba(255,255,255,0.92);">
-                <div class="text-muted small text-uppercase">Bienestar promedio</div>
-                <div class="fs-3 fw-bold">
+            <div class="wellness-metric">
+                <div class="wellness-metric-label">Bienestar promedio</div>
+                <div class="wellness-metric-value">
                     {{ summary.wellness_promedio if summary.wellness_promedio is not none else '-' }}/25
                 </div>
-                <div class="text-muted small">{{ summary.wellness_estado }}</div>
+                <div class="wellness-metric-foot">
+                    <span class="wellness-status {{ wellness_status_class }}">{{ summary.wellness_estado }}</span>
+                </div>
             </div>
         </div>
         <div class="col-md-3">
-            <div class="rounded shadow-sm p-3 h-100" style="background-color: rgba(255,255,255,0.92);">
-                <div class="text-muted small text-uppercase">RPE promedio</div>
-                <div class="fs-3 fw-bold">{{ summary.rpe_promedio if summary.rpe_promedio is not none else '-' }}</div>
-                <div class="text-muted small">{{ summary.rpe_estado }}</div>
+            <div class="wellness-metric">
+                <div class="wellness-metric-label">RPE promedio</div>
+                <div class="wellness-metric-value">{{ summary.rpe_promedio if summary.rpe_promedio is not none else '-' }}</div>
+                <div class="wellness-metric-foot">
+                    <span class="wellness-status {{ rpe_status_class }}">{{ summary.rpe_estado }}</span>
+                </div>
             </div>
         </div>
         <div class="col-md-3">
-            <div class="rounded shadow-sm p-3 h-100" style="background-color: rgba(255,255,255,0.92);">
-                <div class="text-muted small text-uppercase">Carga interna total</div>
-                <div class="fs-3 fw-bold">{{ summary.ua_total if summary.ua_total is not none else '-' }}</div>
-                <div class="text-muted small">UA</div>
+            <div class="wellness-metric">
+                <div class="wellness-metric-label">Carga interna total</div>
+                <div class="wellness-metric-value">{{ summary.ua_total if summary.ua_total is not none else '-' }}</div>
+                <div class="wellness-metric-foot">UA acumuladas</div>
             </div>
         </div>
         <div class="col-md-3">
-            <div class="rounded shadow-sm p-3 h-100" style="background-color: rgba(255,255,255,0.92);">
-                <div class="text-muted small text-uppercase">Jugadoras en zona roja</div>
-                <div class="fs-3 fw-bold">
+            <div class="wellness-metric">
+                <div class="wellness-metric-label">Jugadoras en zona roja</div>
+                <div class="wellness-metric-value">
                     {{ summary.alertas_count }}/{{ summary.alertas_total_jugadoras }}
                 </div>
-                <div class="text-muted small">{{ summary.alertas_pct }}%</div>
+                <div class="wellness-metric-foot">
+                    <span class="wellness-status {{ alerts_status_class }}">{{ summary.alertas_pct }}%</span>
+                </div>
             </div>
         </div>
     </div>
 
     <div class="row g-3 mb-4">
         <div class="col-lg-4">
-            <div class="rounded shadow-sm p-3 h-100" style="background-color: rgba(255,255,255,0.92);">
-                <h2 class="h6 text-uppercase text-muted small mb-3">Evolución bienestar</h2>
-                <div class="position-relative" style="height: 260px;">
+            <div class="wellness-chart h-100">
+                <h2 class="wellness-section-label mb-3">Evolución bienestar</h2>
+                <div class="position-relative wellness-chart-canvas">
                     <canvas id="chart-wellness"
                         data-labels='{{ charts.labels|tojson }}'
                         data-values='{{ charts.wellness|tojson }}'></canvas>
@@ -133,9 +313,9 @@
             </div>
         </div>
         <div class="col-lg-4">
-            <div class="rounded shadow-sm p-3 h-100" style="background-color: rgba(255,255,255,0.92);">
-                <h2 class="h6 text-uppercase text-muted small mb-3">Evolución RPE</h2>
-                <div class="position-relative" style="height: 260px;">
+            <div class="wellness-chart h-100">
+                <h2 class="wellness-section-label mb-3">Evolución RPE</h2>
+                <div class="position-relative wellness-chart-canvas">
                     <canvas id="chart-rpe"
                         data-labels='{{ charts.labels|tojson }}'
                         data-values='{{ charts.rpe|tojson }}'></canvas>
@@ -143,9 +323,9 @@
             </div>
         </div>
         <div class="col-lg-4">
-            <div class="rounded shadow-sm p-3 h-100" style="background-color: rgba(255,255,255,0.92);">
-                <h2 class="h6 text-uppercase text-muted small mb-3">Carga interna diaria</h2>
-                <div class="position-relative" style="height: 260px;">
+            <div class="wellness-chart h-100">
+                <h2 class="wellness-section-label mb-3">Carga interna diaria</h2>
+                <div class="position-relative wellness-chart-canvas">
                     <canvas id="chart-ua"
                         data-labels='{{ charts.labels|tojson }}'
                         data-values='{{ charts.ua|tojson }}'></canvas>
@@ -154,7 +334,7 @@
         </div>
     </div>
 
-    <div class="rounded shadow-sm p-3" style="background-color: rgba(255,255,255,0.92);">
+    <div class="wellness-table">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
             <h2 class="h5 mb-0">Últimos registros</h2>
             <span class="text-muted small">Mostrando hasta 200 de {{ summary.total }} registros</span>
