@@ -183,7 +183,7 @@ class DashboardWellnessRouteTest(unittest.TestCase):
         self.assertIn(b"Check-in", response.data)
         self.assertIn(b"Check-out / RPE / UA", response.data)
         self.assertIn(b"Ausencias", response.data)
-        self.assertIn(b"Pendiente PR 11", response.data)
+        self.assertIn(b"Guardar Check-out", response.data)
         self.assertIn(b"Pendiente PR 12", response.data)
         self.assertIn(b"Test, Alexia", response.data)
 
@@ -195,6 +195,7 @@ class DashboardWellnessRouteTest(unittest.TestCase):
         response = self.client.post(
             "/dashboard/wellness/registro/",
             data={
+                "action": "checkin",
                 "plantel": "1FF",
                 "id_jugadora": "player-1",
                 "fecha_sesion": "2026-05-28",
@@ -217,7 +218,9 @@ class DashboardWellnessRouteTest(unittest.TestCase):
             SELECT id_jugadora, fecha_sesion, tipo, turno, recuperacion, fatiga,
                    sueno, stress, dolor, observacion, usuario, estatus_id
             FROM wellness
-            WHERE id_jugadora = 'player-1' AND fecha_sesion = '2026-05-28'
+            WHERE id_jugadora = 'player-1'
+              AND fecha_sesion = '2026-05-28'
+              AND turno = 'Turno 2'
             """
         ).fetchone()
         conn.close()
@@ -248,6 +251,7 @@ class DashboardWellnessRouteTest(unittest.TestCase):
         response = self.client.post(
             "/dashboard/wellness/registro/",
             data={
+                "action": "checkin",
                 "plantel": "1FF",
                 "id_jugadora": "player-1",
                 "fecha_sesion": date.today().isoformat(),
@@ -272,6 +276,7 @@ class DashboardWellnessRouteTest(unittest.TestCase):
         response = self.client.post(
             "/dashboard/wellness/registro/",
             data={
+                "action": "checkin",
                 "plantel": "1FF",
                 "id_jugadora": "player-1",
                 "fecha_sesion": "2026-05-29",
@@ -287,6 +292,81 @@ class DashboardWellnessRouteTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"recuperacion debe estar entre 1 y 5", response.data)
         self.assertIn(b"Selecciona una zona de dolor", response.data)
+
+    def test_dashboard_wellness_registro_updates_checkout(self):
+        with self.client.session_transaction() as session:
+            session["_user_id"] = "test-user"
+            session["_fresh"] = True
+
+        response = self.client.post(
+            "/dashboard/wellness/registro/",
+            data={
+                "action": "checkout",
+                "plantel": "1FF",
+                "id_jugadora": "player-1",
+                "fecha_sesion": date.today().isoformat(),
+                "turno": "Turno 1",
+                "minutos_sesion": "75",
+                "rpe": "6",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+
+        conn = sqlite3.connect(self.tmp.name)
+        row = conn.execute(
+            """
+            SELECT tipo, minutos_sesion, rpe, ua, usuario, estatus_id
+            FROM wellness
+            WHERE id = 1
+            """
+        ).fetchone()
+        conn.close()
+
+        self.assertEqual(row, ("checkOut", 75, 6.0, 450.0, "Test", 2))
+
+    def test_dashboard_wellness_registro_rejects_checkout_without_checkin(self):
+        with self.client.session_transaction() as session:
+            session["_user_id"] = "test-user"
+            session["_fresh"] = True
+
+        response = self.client.post(
+            "/dashboard/wellness/registro/",
+            data={
+                "action": "checkout",
+                "plantel": "1FF",
+                "id_jugadora": "player-1",
+                "fecha_sesion": "2026-06-01",
+                "turno": "Turno 1",
+                "minutos_sesion": "75",
+                "rpe": "6",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"No existe un Check-in previo", response.data)
+
+    def test_dashboard_wellness_registro_validates_checkout_fields(self):
+        with self.client.session_transaction() as session:
+            session["_user_id"] = "test-user"
+            session["_fresh"] = True
+
+        response = self.client.post(
+            "/dashboard/wellness/registro/",
+            data={
+                "action": "checkout",
+                "plantel": "1FF",
+                "id_jugadora": "player-1",
+                "fecha_sesion": date.today().isoformat(),
+                "turno": "Turno 1",
+                "minutos_sesion": "0",
+                "rpe": "11",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Los minutos de sesi\xc3\xb3n deben ser mayores que 0", response.data)
+        self.assertIn(b"El RPE debe estar entre 1 y 10", response.data)
 
     def test_dashboard_wellness_route_applies_selected_plantel(self):
         with self.client.session_transaction() as session:

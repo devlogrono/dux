@@ -292,6 +292,26 @@ def _checkin_exists(record):
     return row is not None
 
 
+def _find_active_wellness_record(record):
+    sql = """
+        SELECT id
+        FROM wellness
+        WHERE id_jugadora = :id_jugadora
+          AND fecha_sesion = :fecha_sesion
+          AND turno = :turno
+          AND (estatus_id IS NULL OR estatus_id <= 2)
+        LIMIT 1
+    """
+    return db.session.execute(
+        text(sql),
+        {
+            "id_jugadora": record["id_jugadora"],
+            "fecha_sesion": record["fecha_sesion"],
+            "turno": record["turno"],
+        },
+    ).mappings().first()
+
+
 def _insert_checkin(record):
     sql = """
         INSERT INTO wellness (
@@ -307,6 +327,76 @@ def _insert_checkin(record):
     db.session.execute(text(sql), record)
     db.session.commit()
     cache.clear()
+
+
+def _validate_checkout_form(form, available_jugadoras):
+    errors = []
+    available_ids = {jugadora["id"] for jugadora in available_jugadoras}
+
+    id_jugadora = form.get("id_jugadora")
+    if id_jugadora not in available_ids:
+        errors.append("Selecciona una jugadora válida.")
+
+    fecha_sesion = form.get("fecha_sesion") or date.today().isoformat()
+    try:
+        date.fromisoformat(fecha_sesion)
+    except ValueError:
+        errors.append("La fecha de sesión no es válida.")
+
+    turno = form.get("turno") or "Turno 1"
+    if turno not in ["Turno 1", "Turno 2", "Turno 3"]:
+        errors.append("Selecciona un turno válido.")
+
+    minutos_sesion = _parse_int(form.get("minutos_sesion"))
+    rpe = _parse_int(form.get("rpe"))
+
+    if minutos_sesion is None:
+        errors.append("Completa los minutos de sesión.")
+    elif minutos_sesion <= 0:
+        errors.append("Los minutos de sesión deben ser mayores que 0.")
+
+    if rpe is None:
+        errors.append("Completa el RPE.")
+    elif not 1 <= rpe <= 10:
+        errors.append("El RPE debe estar entre 1 y 10.")
+
+    record = {
+        "id_jugadora": id_jugadora,
+        "fecha_sesion": fecha_sesion,
+        "tipo": "checkOut",
+        "turno": turno,
+        "minutos_sesion": minutos_sesion,
+        "rpe": rpe,
+        "ua": minutos_sesion * rpe if minutos_sesion is not None and rpe is not None else None,
+        "usuario": (
+            getattr(current_user, "name", None)
+            or getattr(current_user, "email", None)
+            or "unknown"
+        ),
+    }
+
+    return record, errors
+
+
+def _update_checkout(record):
+    row = _find_active_wellness_record(record)
+    if row is None:
+        return False
+
+    sql = """
+        UPDATE wellness
+        SET tipo = :tipo,
+            minutos_sesion = :minutos_sesion,
+            rpe = :rpe,
+            ua = :ua,
+            usuario = :usuario,
+            estatus_id = 2
+        WHERE id = :id
+    """
+    db.session.execute(text(sql), {**record, "id": row["id"]})
+    db.session.commit()
+    cache.clear()
+    return True
 
 
 def _fetch_wellness_records(planteles, jugadoras, tipos, since, limit=None):
@@ -582,7 +672,7 @@ def registro():
         "fecha_sesion": date.today().isoformat(),
         "turno": "Turno 1",
     }
-    saved = request.args.get("saved") == "1"
+    saved = request.args.get("saved")
 
     try:
         requested_planteles = request.form.getlist("plantel") or request.args.getlist("plantel")
@@ -590,15 +680,28 @@ def registro():
         form_data.update(request.form.to_dict())
 
         if request.method == "POST":
-            record, form_errors = _validate_checkin_form(request.form, options["jugadoras"])
+            action = request.form.get("action", "checkin")
+            if action == "checkout":
+                record, form_errors = _validate_checkout_form(request.form, options["jugadoras"])
+            else:
+                record, form_errors = _validate_checkin_form(request.form, options["jugadoras"])
             form_data.update(record)
 
-            if not form_errors and _checkin_exists(record):
+            if action == "checkin" and not form_errors and _checkin_exists(record):
                 form_errors.append("Ya existe un Check-in para esta jugadora, fecha y turno.")
 
             if not form_errors:
-                _insert_checkin(record)
-                return redirect(url_for("dashboard_wellness.registro", saved=1))
+                if action == "checkout":
+                    updated = _update_checkout(record)
+                    if not updated:
+                        form_errors.append(
+                            "No existe un Check-in previo para esta jugadora, fecha y turno."
+                        )
+                    else:
+                        return redirect(url_for("dashboard_wellness.registro", saved="checkout"))
+                else:
+                    _insert_checkin(record)
+                    return redirect(url_for("dashboard_wellness.registro", saved="checkin"))
     except SQLAlchemyError:
         db.session.rollback()
         error = "No se pudo procesar el registro Wellness."
