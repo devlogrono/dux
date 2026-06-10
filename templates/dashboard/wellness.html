@@ -184,7 +184,12 @@
                 <h1 class="h3 mb-1 wellness-title">Wellness</h1>
                 <p class="wellness-subtitle">Indicadores de bienestar, esfuerzo percibido y carga interna.</p>
             </div>
-            <span class="wellness-badge">Solo lectura</span>
+            <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+                <a class="btn btn-outline-primary btn-sm" href="{{ url_for('dashboard_wellness.registro') }}">
+                    Registro Wellness
+                </a>
+                <span class="wellness-badge">Solo lectura</span>
+            </div>
         </div>
 
         <form method="get" class="row g-3 align-items-end">

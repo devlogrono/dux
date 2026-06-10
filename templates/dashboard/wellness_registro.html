@@ -1,0 +1,281 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Registro Wellness{% endblock %}
+
+{% block extra_css %}
+<style>
+    .wellness-entry-page {
+        --entry-surface: rgba(255, 255, 255, 0.94);
+        --entry-border: rgba(15, 23, 42, 0.08);
+        --entry-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+        --entry-ink: #111827;
+        --entry-muted: #6b7280;
+    }
+
+    .entry-surface,
+    .entry-panel {
+        background: var(--entry-surface);
+        border: 1px solid var(--entry-border);
+        border-radius: 8px;
+        box-shadow: var(--entry-shadow);
+        backdrop-filter: blur(6px);
+    }
+
+    .entry-title {
+        color: var(--entry-ink);
+        font-weight: 700;
+        letter-spacing: 0;
+    }
+
+    .entry-subtitle,
+    .entry-muted {
+        color: var(--entry-muted);
+    }
+
+    .entry-badge {
+        border: 1px solid rgba(13, 110, 253, 0.16);
+        background: rgba(13, 110, 253, 0.08);
+        color: #084298;
+        border-radius: 999px;
+        font-weight: 650;
+        padding: 0.35rem 0.65rem;
+        white-space: nowrap;
+    }
+
+    .entry-label {
+        color: var(--entry-muted);
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+    }
+
+    .entry-panel {
+        padding: 1rem;
+    }
+
+    .entry-panel-title {
+        color: var(--entry-ink);
+        font-size: 1rem;
+        font-weight: 700;
+        margin-bottom: 0.25rem;
+    }
+
+    .entry-scale {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 0.5rem;
+    }
+
+    .entry-scale input {
+        text-align: center;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4 wellness-entry-page">
+    <div class="entry-surface p-4 mb-4">
+        <div class="d-flex align-items-start justify-content-between flex-wrap gap-3">
+            <div>
+                <h1 class="h3 mb-1 entry-title">Registro Wellness</h1>
+                <p class="entry-subtitle mb-0">Shell visual para la futura entrada de Check-in, Check-out/RPE/UA y Ausencias.</p>
+            </div>
+            <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+                <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('dashboard_wellness.index') }}">
+                    Volver al dashboard
+                </a>
+                <span class="entry-badge">Sin escritura en base de datos</span>
+            </div>
+        </div>
+    </div>
+
+    {% if error %}
+        <div class="alert alert-warning" role="alert">{{ error }}</div>
+    {% endif %}
+
+    <div class="entry-surface p-4 mb-4">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label for="entry-plantel" class="form-label entry-label">Plantel</label>
+                <select id="entry-plantel" class="form-select" disabled>
+                    {% for plantel in planteles %}
+                        <option value="{{ plantel }}" {% if plantel in selected_planteles %}selected{% endif %}>{{ plantel }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-5">
+                <label for="entry-jugadora" class="form-label entry-label">Jugadora</label>
+                <select id="entry-jugadora" class="form-select" disabled>
+                    {% if jugadoras %}
+                        {% for jugadora in jugadoras %}
+                            <option value="{{ jugadora.id }}">{{ jugadora.nombre }}{% if jugadora.plantel %} · {{ jugadora.plantel }}{% endif %}</option>
+                        {% endfor %}
+                    {% else %}
+                        <option>Sin jugadoras disponibles</option>
+                    {% endif %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="entry-turno" class="form-label entry-label">Turno</label>
+                <select id="entry-turno" class="form-select" disabled>
+                    {% for turno in turnos %}
+                        <option>{{ turno }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="entry-fecha" class="form-label entry-label">Fecha</label>
+                <input id="entry-fecha" class="form-control" type="date" disabled>
+            </div>
+        </div>
+        <p class="entry-muted small mb-0 mt-3">Estos controles solo muestran la estructura prevista. Los envios se implementaran en los siguientes PRs.</p>
+    </div>
+
+    <ul class="nav nav-tabs mb-3" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="checkin-tab" data-bs-toggle="tab" data-bs-target="#checkin-pane" type="button" role="tab" aria-controls="checkin-pane" aria-selected="true">
+                Check-in
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="checkout-tab" data-bs-toggle="tab" data-bs-target="#checkout-pane" type="button" role="tab" aria-controls="checkout-pane" aria-selected="false">
+                Check-out / RPE / UA
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="ausencias-tab" data-bs-toggle="tab" data-bs-target="#ausencias-pane" type="button" role="tab" aria-controls="ausencias-pane" aria-selected="false">
+                Ausencias
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <div class="tab-pane fade show active" id="checkin-pane" role="tabpanel" aria-labelledby="checkin-tab" tabindex="0">
+            <div class="entry-panel">
+                <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
+                    <div>
+                        <div class="entry-panel-title">Check-in diario</div>
+                        <p class="entry-muted mb-0">Escala Wellness 1-5 para bienestar previo al entrenamiento.</p>
+                    </div>
+                    <span class="entry-badge">Pendiente PR 10</span>
+                </div>
+
+                <div class="entry-scale mb-3">
+                    {% for field in wellness_fields %}
+                        <div>
+                            <label class="form-label entry-label">{{ field }}</label>
+                            <input class="form-control" type="number" min="1" max="5" placeholder="1-5" disabled>
+                        </div>
+                    {% endfor %}
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label entry-label">Zona dolor</label>
+                        <select class="form-select" disabled>
+                            <option>Seleccionar zona</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label entry-label">Estructura anatomica</label>
+                        <select class="form-select" disabled>
+                            <option>Seleccionar estructura</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label entry-label">MD+</label>
+                        <select class="form-select" disabled>
+                            <option>MD+1</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label entry-label">MD-</label>
+                        <select class="form-select" disabled>
+                            <option>MD-6</option>
+                        </select>
+                    </div>
+                    <div class="col-md-1 d-flex align-items-end">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="entry-periodo" disabled>
+                            <label class="form-check-label small" for="entry-periodo">Periodo</label>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label entry-label">Observaciones</label>
+                        <textarea class="form-control" rows="3" disabled></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="checkout-pane" role="tabpanel" aria-labelledby="checkout-tab" tabindex="0">
+            <div class="entry-panel">
+                <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
+                    <div>
+                        <div class="entry-panel-title">Check-out y carga interna</div>
+                        <p class="entry-muted mb-0">Completa el registro existente con minutos, RPE y UA.</p>
+                    </div>
+                    <span class="entry-badge">Pendiente PR 11</span>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label entry-label">Minutos de sesion</label>
+                        <input class="form-control" type="number" min="1" disabled>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label entry-label">RPE</label>
+                        <input class="form-control" type="number" min="1" max="10" disabled>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label entry-label">UA calculada</label>
+                        <input class="form-control" placeholder="RPE x minutos" disabled>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="ausencias-pane" role="tabpanel" aria-labelledby="ausencias-tab" tabindex="0">
+            <div class="entry-panel">
+                <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
+                    <div>
+                        <div class="entry-panel-title">Registro de ausencias</div>
+                        <p class="entry-muted mb-0">Estructura prevista para guardar ausencias por jugadora y motivo.</p>
+                    </div>
+                    <span class="entry-badge">Pendiente PR 12</span>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label entry-label">Fecha inicio</label>
+                        <input class="form-control" type="date" disabled>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label entry-label">Fecha fin</label>
+                        <input class="form-control" type="date" disabled>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label entry-label">Motivo</label>
+                        <select class="form-select" disabled>
+                            <option>Seleccionar motivo</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label entry-label">Turno</label>
+                        <select class="form-select" disabled>
+                            {% for turno in turnos %}
+                                <option>{{ turno }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label entry-label">Observaciones</label>
+                        <textarea class="form-control" rows="3" disabled></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -146,6 +146,26 @@ def _fetch_filter_options():
     return planteles, jugadoras, tipos
 
 
+def _fetch_data_entry_options():
+    planteles, jugadoras, tipos = _fetch_filter_options()
+    selected_planteles = _selected_planteles([], planteles)
+    visible_jugadoras = _filter_jugadoras_by_plantel(jugadoras, selected_planteles)
+    return {
+        "planteles": planteles,
+        "jugadoras": visible_jugadoras,
+        "tipos": tipos,
+        "selected_planteles": selected_planteles,
+        "turnos": ["Turno 1", "Turno 2", "Turno 3"],
+        "wellness_fields": [
+            "Recuperación",
+            "Energía",
+            "Sueño",
+            "Estrés",
+            "Dolor",
+        ],
+    }
+
+
 def _fetch_wellness_records(planteles, jugadoras, tipos, since, limit=None):
     sql = """
         SELECT
@@ -393,4 +413,36 @@ def index():
         display_records=records[:200],
         summary=summary,
         charts=charts,
+    )
+
+
+@bp.get("/registro/")
+@login_required
+def registro():
+    options = {
+        "planteles": [],
+        "jugadoras": [],
+        "tipos": [],
+        "selected_planteles": [],
+        "turnos": ["Turno 1", "Turno 2", "Turno 3"],
+        "wellness_fields": [
+            "Recuperación",
+            "Energía",
+            "Sueño",
+            "Estrés",
+            "Dolor",
+        ],
+    }
+    error = None
+
+    try:
+        options = _fetch_data_entry_options()
+    except SQLAlchemyError:
+        db.session.rollback()
+        error = "No se pudieron cargar las opciones de registro Wellness."
+
+    return render_template(
+        "dashboard/wellness_registro.html",
+        error=error,
+        **options,
     )

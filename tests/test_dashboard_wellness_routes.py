@@ -152,6 +152,7 @@ class DashboardWellnessRouteTest(unittest.TestCase):
         self.assertIn(b"Wellness", response.data)
         self.assertIn(b"Indicadores de bienestar", response.data)
         self.assertIn(b"Solo lectura", response.data)
+        self.assertIn(b"Registro Wellness", response.data)
         self.assertIn(b"Test, Alexia", response.data)
         self.assertIn(b"1FF", response.data)
         self.assertIn(b"checkOut", response.data)
@@ -164,6 +165,33 @@ class DashboardWellnessRouteTest(unittest.TestCase):
         self.assertIn(b'id="chart-wellness"', response.data)
         self.assertIn(b'id="chart-rpe"', response.data)
         self.assertIn(b'id="chart-ua"', response.data)
+
+    def test_dashboard_wellness_registro_shell_renders_for_logged_user(self):
+        with self.client.session_transaction() as session:
+            session["_user_id"] = "test-user"
+            session["_fresh"] = True
+
+        response = self.client.get("/dashboard/wellness/registro/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Registro Wellness", response.data)
+        self.assertIn(b"Sin escritura en base de datos", response.data)
+        self.assertIn(b"Check-in", response.data)
+        self.assertIn(b"Check-out / RPE / UA", response.data)
+        self.assertIn(b"Ausencias", response.data)
+        self.assertIn(b"Pendiente PR 10", response.data)
+        self.assertIn(b"Pendiente PR 11", response.data)
+        self.assertIn(b"Pendiente PR 12", response.data)
+        self.assertIn(b"Test, Alexia", response.data)
+
+    def test_dashboard_wellness_registro_shell_does_not_accept_post(self):
+        with self.client.session_transaction() as session:
+            session["_user_id"] = "test-user"
+            session["_fresh"] = True
+
+        response = self.client.post("/dashboard/wellness/registro/", data={})
+
+        self.assertEqual(response.status_code, 405)
 
     def test_dashboard_wellness_route_applies_selected_plantel(self):
         with self.client.session_transaction() as session:
