@@ -94,11 +94,27 @@
         <div class="alert alert-warning" role="alert">{{ error }}</div>
     {% endif %}
 
+    {% if saved %}
+        <div class="alert alert-success" role="alert">Check-in guardado correctamente.</div>
+    {% endif %}
+
+    {% if form_errors %}
+        <div class="alert alert-danger" role="alert">
+            <div class="fw-semibold mb-1">No se pudo guardar el Check-in.</div>
+            <ul class="mb-0">
+                {% for form_error in form_errors %}
+                    <li>{{ form_error }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('dashboard_wellness.registro') }}">
     <div class="entry-surface p-4 mb-4">
         <div class="row g-3">
             <div class="col-md-3">
                 <label for="entry-plantel" class="form-label entry-label">Plantel</label>
-                <select id="entry-plantel" class="form-select" disabled>
+                <select id="entry-plantel" name="plantel" class="form-select">
                     {% for plantel in planteles %}
                         <option value="{{ plantel }}" {% if plantel in selected_planteles %}selected{% endif %}>{{ plantel }}</option>
                     {% endfor %}
@@ -106,10 +122,12 @@
             </div>
             <div class="col-md-5">
                 <label for="entry-jugadora" class="form-label entry-label">Jugadora</label>
-                <select id="entry-jugadora" class="form-select" disabled>
+                <select id="entry-jugadora" name="id_jugadora" class="form-select">
                     {% if jugadoras %}
                         {% for jugadora in jugadoras %}
-                            <option value="{{ jugadora.id }}">{{ jugadora.nombre }}{% if jugadora.plantel %} · {{ jugadora.plantel }}{% endif %}</option>
+                            <option value="{{ jugadora.id }}" {% if form_data.id_jugadora == jugadora.id %}selected{% endif %}>
+                                {{ jugadora.nombre }}{% if jugadora.plantel %} · {{ jugadora.plantel }}{% endif %}
+                            </option>
                         {% endfor %}
                     {% else %}
                         <option>Sin jugadoras disponibles</option>
@@ -118,18 +136,18 @@
             </div>
             <div class="col-md-2">
                 <label for="entry-turno" class="form-label entry-label">Turno</label>
-                <select id="entry-turno" class="form-select" disabled>
+                <select id="entry-turno" name="turno" class="form-select">
                     {% for turno in turnos %}
-                        <option>{{ turno }}</option>
+                        <option value="{{ turno }}" {% if form_data.turno == turno %}selected{% endif %}>{{ turno }}</option>
                     {% endfor %}
                 </select>
             </div>
             <div class="col-md-2">
                 <label for="entry-fecha" class="form-label entry-label">Fecha</label>
-                <input id="entry-fecha" class="form-control" type="date" disabled>
+                <input id="entry-fecha" name="fecha_sesion" class="form-control" type="date" value="{{ form_data.fecha_sesion }}" required>
             </div>
         </div>
-        <p class="entry-muted small mb-0 mt-3">Estos controles solo muestran la estructura prevista. Los envios se implementaran en los siguientes PRs.</p>
+        <p class="entry-muted small mb-0 mt-3">En este PR solo se guarda Check-in. Check-out y Ausencias se implementaran en los siguientes PRs.</p>
     </div>
 
     <ul class="nav nav-tabs mb-3" role="tablist">
@@ -158,14 +176,21 @@
                         <div class="entry-panel-title">Check-in diario</div>
                         <p class="entry-muted mb-0">Escala Wellness 1-5 para bienestar previo al entrenamiento.</p>
                     </div>
-                    <span class="entry-badge">Pendiente PR 10</span>
+                    <span class="entry-badge">Guardar Check-in</span>
                 </div>
 
                 <div class="entry-scale mb-3">
-                    {% for field in wellness_fields %}
+                    {% set wellness_inputs = [
+                        ('recuperacion', 'Recuperación'),
+                        ('fatiga', 'Energía'),
+                        ('sueno', 'Sueño'),
+                        ('stress', 'Estrés'),
+                        ('dolor', 'Dolor')
+                    ] %}
+                    {% for field_name, field_label in wellness_inputs %}
                         <div>
-                            <label class="form-label entry-label">{{ field }}</label>
-                            <input class="form-control" type="number" min="1" max="5" placeholder="1-5" disabled>
+                            <label class="form-label entry-label">{{ field_label }}</label>
+                            <input class="form-control" name="{{ field_name }}" type="number" min="1" max="5" placeholder="1-5" value="{{ form_data[field_name] or '' }}" required>
                         </div>
                     {% endfor %}
                 </div>
@@ -173,8 +198,11 @@
                 <div class="row g-3">
                     <div class="col-md-3">
                         <label class="form-label entry-label">Zona dolor</label>
-                        <select class="form-select" disabled>
-                            <option>Seleccionar zona</option>
+                        <select class="form-select" name="id_zona_segmento_dolor">
+                            <option value="">Seleccionar zona</option>
+                            {% for pain_zone in pain_zones %}
+                                <option value="{{ pain_zone.id }}" {% if form_data.id_zona_segmento_dolor|string == pain_zone.id|string %}selected{% endif %}>{{ pain_zone.nombre }}</option>
+                            {% endfor %}
                         </select>
                     </div>
                     <div class="col-md-4">
@@ -184,16 +212,12 @@
                         </select>
                     </div>
                     <div class="col-md-2">
-                        <label class="form-label entry-label">MD+</label>
-                        <select class="form-select" disabled>
-                            <option>MD+1</option>
-                        </select>
+                        <label class="form-label entry-label">Periodización</label>
+                        <input class="form-control" name="periodizacion_tactica" value="{{ form_data.periodizacion_tactica or 'MD+1 / MD-6' }}">
                     </div>
                     <div class="col-md-2">
-                        <label class="form-label entry-label">MD-</label>
-                        <select class="form-select" disabled>
-                            <option>MD-6</option>
-                        </select>
+                        <label class="form-label entry-label">Estado</label>
+                        <input class="form-control" value="Check-in" disabled>
                     </div>
                     <div class="col-md-1 d-flex align-items-end">
                         <div class="form-check">
@@ -203,7 +227,10 @@
                     </div>
                     <div class="col-12">
                         <label class="form-label entry-label">Observaciones</label>
-                        <textarea class="form-control" rows="3" disabled></textarea>
+                        <textarea class="form-control" name="observacion" rows="3">{{ form_data.observacion or '' }}</textarea>
+                    </div>
+                    <div class="col-12 d-flex justify-content-end">
+                        <button class="btn btn-primary" type="submit">Guardar Check-in</button>
                     </div>
                 </div>
             </div>
@@ -277,5 +304,6 @@
             </div>
         </div>
     </div>
+    </form>
 </div>
 {% endblock %}

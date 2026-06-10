@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import bindparam, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -146,14 +146,61 @@ def _fetch_filter_options():
     return planteles, jugadoras, tipos
 
 
-def _fetch_data_entry_options():
-    planteles, jugadoras, tipos = _fetch_filter_options()
-    selected_planteles = _selected_planteles([], planteles)
+def _fetch_player_options():
+    sql = """
+        SELECT DISTINCT
+            identificacion AS id_jugadora,
+            nombre,
+            apellido,
+            competicion AS plantel
+        FROM futbolistas
+        WHERE identificacion IS NOT NULL
+          AND (genero = 'F' OR genero IS NULL)
+          AND (id_estado = 1 OR id_estado IS NULL)
+        ORDER BY competicion ASC, apellido ASC, nombre ASC
+    """
+    rows = db.session.execute(text(sql)).mappings().all()
+
+    planteles = []
+    seen_planteles = set()
+    jugadoras = []
+    for row in rows:
+        plantel = row["plantel"]
+        if plantel and plantel not in seen_planteles:
+            planteles.append(plantel)
+            seen_planteles.add(plantel)
+
+        nombre_completo = f"{row['apellido'] or ''}, {row['nombre'] or ''}".strip(", ")
+        jugadoras.append(
+            {
+                "id": row["id_jugadora"],
+                "nombre": nombre_completo or row["id_jugadora"],
+                "plantel": plantel,
+            }
+        )
+
+    return planteles, jugadoras
+
+
+def _fetch_pain_zone_options():
+    try:
+        rows = db.session.execute(text(
+            "SELECT id, nombre FROM zonas_segmento ORDER BY nombre ASC"
+        )).mappings().all()
+    except SQLAlchemyError:
+        return []
+
+    return [{"id": row["id"], "nombre": row["nombre"]} for row in rows]
+
+
+def _fetch_data_entry_options(selected_planteles=None):
+    planteles, jugadoras = _fetch_player_options()
+    selected_planteles = _selected_planteles(selected_planteles or [], planteles)
     visible_jugadoras = _filter_jugadoras_by_plantel(jugadoras, selected_planteles)
     return {
         "planteles": planteles,
         "jugadoras": visible_jugadoras,
-        "tipos": tipos,
+        "pain_zones": _fetch_pain_zone_options(),
         "selected_planteles": selected_planteles,
         "turnos": ["Turno 1", "Turno 2", "Turno 3"],
         "wellness_fields": [
@@ -164,6 +211,102 @@ def _fetch_data_entry_options():
             "Dolor",
         ],
     }
+
+
+def _parse_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _validate_checkin_form(form, available_jugadoras):
+    errors = []
+    available_ids = {jugadora["id"] for jugadora in available_jugadoras}
+
+    id_jugadora = form.get("id_jugadora")
+    if id_jugadora not in available_ids:
+        errors.append("Selecciona una jugadora válida.")
+
+    fecha_sesion = form.get("fecha_sesion") or date.today().isoformat()
+    try:
+        date.fromisoformat(fecha_sesion)
+    except ValueError:
+        errors.append("La fecha de sesión no es válida.")
+
+    turno = form.get("turno") or "Turno 1"
+    if turno not in ["Turno 1", "Turno 2", "Turno 3"]:
+        errors.append("Selecciona un turno válido.")
+
+    record = {
+        "id_jugadora": id_jugadora,
+        "fecha_sesion": fecha_sesion,
+        "tipo": "checkin",
+        "turno": turno,
+        "periodizacion_tactica": form.get("periodizacion_tactica") or "",
+        "recuperacion": _parse_int(form.get("recuperacion")),
+        "fatiga": _parse_int(form.get("fatiga")),
+        "sueno": _parse_int(form.get("sueno")),
+        "stress": _parse_int(form.get("stress")),
+        "dolor": _parse_int(form.get("dolor")),
+        "id_zona_segmento_dolor": _parse_int(form.get("id_zona_segmento_dolor")),
+        "observacion": form.get("observacion") or "",
+        "usuario": (
+            getattr(current_user, "name", None)
+            or getattr(current_user, "email", None)
+            or "unknown"
+        ),
+    }
+
+    for field in ["recuperacion", "fatiga", "sueno", "stress", "dolor"]:
+        value = record[field]
+        if value is None:
+            errors.append(f"Completa el campo {field}.")
+        elif not 1 <= value <= 5:
+            errors.append(f"El campo {field} debe estar entre 1 y 5.")
+
+    if record["dolor"] is not None and record["dolor"] > 1 and record["id_zona_segmento_dolor"] is None:
+        errors.append("Selecciona una zona de dolor.")
+
+    return record, errors
+
+
+def _checkin_exists(record):
+    sql = """
+        SELECT id
+        FROM wellness
+        WHERE id_jugadora = :id_jugadora
+          AND fecha_sesion = :fecha_sesion
+          AND turno = :turno
+          AND (estatus_id IS NULL OR estatus_id <= 2)
+        LIMIT 1
+    """
+    row = db.session.execute(
+        text(sql),
+        {
+            "id_jugadora": record["id_jugadora"],
+            "fecha_sesion": record["fecha_sesion"],
+            "turno": record["turno"],
+        },
+    ).first()
+    return row is not None
+
+
+def _insert_checkin(record):
+    sql = """
+        INSERT INTO wellness (
+            id_jugadora, fecha_sesion, tipo, turno, periodizacion_tactica,
+            recuperacion, fatiga, sueno, stress, dolor, id_zona_segmento_dolor,
+            observacion, usuario, estatus_id
+        ) VALUES (
+            :id_jugadora, :fecha_sesion, :tipo, :turno, :periodizacion_tactica,
+            :recuperacion, :fatiga, :sueno, :stress, :dolor, :id_zona_segmento_dolor,
+            :observacion, :usuario, 1
+        )
+    """
+    db.session.execute(text(sql), record)
+    db.session.commit()
+    cache.clear()
 
 
 def _fetch_wellness_records(planteles, jugadoras, tipos, since, limit=None):
@@ -416,13 +559,13 @@ def index():
     )
 
 
-@bp.get("/registro/")
+@bp.route("/registro/", methods=["GET", "POST"])
 @login_required
 def registro():
     options = {
         "planteles": [],
         "jugadoras": [],
-        "tipos": [],
+        "pain_zones": [],
         "selected_planteles": [],
         "turnos": ["Turno 1", "Turno 2", "Turno 3"],
         "wellness_fields": [
@@ -434,15 +577,37 @@ def registro():
         ],
     }
     error = None
+    form_errors = []
+    form_data = {
+        "fecha_sesion": date.today().isoformat(),
+        "turno": "Turno 1",
+    }
+    saved = request.args.get("saved") == "1"
 
     try:
-        options = _fetch_data_entry_options()
+        requested_planteles = request.form.getlist("plantel") or request.args.getlist("plantel")
+        options = _fetch_data_entry_options(requested_planteles)
+        form_data.update(request.form.to_dict())
+
+        if request.method == "POST":
+            record, form_errors = _validate_checkin_form(request.form, options["jugadoras"])
+            form_data.update(record)
+
+            if not form_errors and _checkin_exists(record):
+                form_errors.append("Ya existe un Check-in para esta jugadora, fecha y turno.")
+
+            if not form_errors:
+                _insert_checkin(record)
+                return redirect(url_for("dashboard_wellness.registro", saved=1))
     except SQLAlchemyError:
         db.session.rollback()
-        error = "No se pudieron cargar las opciones de registro Wellness."
+        error = "No se pudo procesar el registro Wellness."
 
     return render_template(
         "dashboard/wellness_registro.html",
         error=error,
+        form_errors=form_errors,
+        form_data=form_data,
+        saved=saved,
         **options,
     )
