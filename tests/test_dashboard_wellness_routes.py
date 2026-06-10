@@ -81,6 +81,28 @@ class DashboardWellnessRouteTest(unittest.TestCase):
         )
         conn.execute(
             """
+            CREATE TABLE tipo_ausencia (
+                id INTEGER PRIMARY KEY,
+                nombre TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE ausencias (
+                id INTEGER PRIMARY KEY,
+                id_jugadora TEXT,
+                fecha_inicio DATE,
+                fecha_fin DATE,
+                motivo_id INTEGER,
+                turno TEXT,
+                observacion TEXT,
+                usuario TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
             INSERT INTO futbolistas (
                 identificacion, nombre, apellido, competicion, genero, id_estado
             )
@@ -93,6 +115,12 @@ class DashboardWellnessRouteTest(unittest.TestCase):
                 identificacion, nombre, apellido, competicion, genero, id_estado
             )
             VALUES ('player-2', 'Patri', 'Other', '2FF', 'F', 1)
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO tipo_ausencia (id, nombre)
+            VALUES (1, 'Lesion')
             """
         )
         today = date.today().isoformat()
@@ -155,7 +183,7 @@ class DashboardWellnessRouteTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Wellness", response.data)
         self.assertIn(b"Indicadores de bienestar", response.data)
-        self.assertIn(b"Solo lectura", response.data)
+        self.assertNotIn(b"Solo lectura", response.data)
         self.assertIn(b"Registro Wellness", response.data)
         self.assertIn(b"Test, Alexia", response.data)
         self.assertIn(b"1FF", response.data)
@@ -184,7 +212,8 @@ class DashboardWellnessRouteTest(unittest.TestCase):
         self.assertIn(b"Check-out / RPE / UA", response.data)
         self.assertIn(b"Ausencias", response.data)
         self.assertIn(b"Guardar Check-out", response.data)
-        self.assertIn(b"Pendiente PR 12", response.data)
+        self.assertIn(b"Guardar ausencia", response.data)
+        self.assertIn(b"Lesion", response.data)
         self.assertIn(b"Test, Alexia", response.data)
 
     def test_dashboard_wellness_registro_creates_checkin(self):
@@ -367,6 +396,72 @@ class DashboardWellnessRouteTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Los minutos de sesi\xc3\xb3n deben ser mayores que 0", response.data)
         self.assertIn(b"El RPE debe estar entre 1 y 10", response.data)
+
+    def test_dashboard_wellness_registro_creates_absence(self):
+        with self.client.session_transaction() as session:
+            session["_user_id"] = "test-user"
+            session["_fresh"] = True
+
+        response = self.client.post(
+            "/dashboard/wellness/registro/",
+            data={
+                "action": "ausencia",
+                "plantel": "1FF",
+                "id_jugadora": "player-1",
+                "fecha_inicio": "2026-05-28",
+                "fecha_fin": "2026-05-30",
+                "motivo_id": "1",
+                "ausencia_turno": "Todos",
+                "ausencia_observacion": "Test absence",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+
+        conn = sqlite3.connect(self.tmp.name)
+        row = conn.execute(
+            """
+            SELECT id_jugadora, fecha_inicio, fecha_fin, motivo_id, turno, observacion, usuario
+            FROM ausencias
+            WHERE id_jugadora = 'player-1'
+            """
+        ).fetchone()
+        conn.close()
+
+        self.assertEqual(
+            row,
+            (
+                "player-1",
+                "2026-05-28",
+                "2026-05-30",
+                1,
+                "Todos",
+                "Test absence",
+                "Test",
+            ),
+        )
+
+    def test_dashboard_wellness_registro_validates_absence_fields(self):
+        with self.client.session_transaction() as session:
+            session["_user_id"] = "test-user"
+            session["_fresh"] = True
+
+        response = self.client.post(
+            "/dashboard/wellness/registro/",
+            data={
+                "action": "ausencia",
+                "plantel": "1FF",
+                "id_jugadora": "player-1",
+                "fecha_inicio": "2026-05-30",
+                "fecha_fin": "2026-05-28",
+                "motivo_id": "",
+                "ausencia_turno": "Todos",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"La fecha final no puede ser menor", response.data)
+        self.assertIn(b"Selecciona un motivo de ausencia", response.data)
 
     def test_dashboard_wellness_route_applies_selected_plantel(self):
         with self.client.session_transaction() as session:

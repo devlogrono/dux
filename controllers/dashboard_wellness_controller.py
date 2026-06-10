@@ -193,6 +193,17 @@ def _fetch_pain_zone_options():
     return [{"id": row["id"], "nombre": row["nombre"]} for row in rows]
 
 
+def _fetch_absence_reason_options():
+    try:
+        rows = db.session.execute(text(
+            "SELECT id, nombre FROM tipo_ausencia ORDER BY nombre ASC"
+        )).mappings().all()
+    except SQLAlchemyError:
+        return []
+
+    return [{"id": row["id"], "nombre": row["nombre"]} for row in rows]
+
+
 def _fetch_data_entry_options(selected_planteles=None):
     planteles, jugadoras = _fetch_player_options()
     selected_planteles = _selected_planteles(selected_planteles or [], planteles)
@@ -201,8 +212,10 @@ def _fetch_data_entry_options(selected_planteles=None):
         "planteles": planteles,
         "jugadoras": visible_jugadoras,
         "pain_zones": _fetch_pain_zone_options(),
+        "absence_reasons": _fetch_absence_reason_options(),
         "selected_planteles": selected_planteles,
         "turnos": ["Turno 1", "Turno 2", "Turno 3"],
+        "absence_turnos": ["Todos", "Turno 1", "Turno 2", "Turno 3"],
         "wellness_fields": [
             "Recuperación",
             "Energía",
@@ -376,6 +389,66 @@ def _validate_checkout_form(form, available_jugadoras):
     }
 
     return record, errors
+
+
+def _validate_absence_form(form, available_jugadoras, absence_reasons):
+    errors = []
+    available_ids = {jugadora["id"] for jugadora in available_jugadoras}
+    reason_ids = {str(reason["id"]) for reason in absence_reasons}
+
+    id_jugadora = form.get("id_jugadora")
+    if id_jugadora not in available_ids:
+        errors.append("Selecciona una jugadora válida.")
+
+    fecha_inicio = form.get("fecha_inicio") or date.today().isoformat()
+    fecha_fin = form.get("fecha_fin") or fecha_inicio
+    try:
+        inicio = date.fromisoformat(fecha_inicio)
+        fin = date.fromisoformat(fecha_fin)
+    except ValueError:
+        errors.append("Las fechas de ausencia no son válidas.")
+        inicio = None
+        fin = None
+
+    if inicio and fin and fin < inicio:
+        errors.append("La fecha final no puede ser menor que la fecha inicial.")
+
+    motivo_id = form.get("motivo_id")
+    if motivo_id not in reason_ids:
+        errors.append("Selecciona un motivo de ausencia válido.")
+
+    turno = form.get("ausencia_turno") or "Todos"
+    if turno not in ["Todos", "Turno 1", "Turno 2", "Turno 3"]:
+        errors.append("Selecciona un turno válido.")
+
+    record = {
+        "id_jugadora": id_jugadora,
+        "fecha_inicio": fecha_inicio,
+        "fecha_fin": fecha_fin,
+        "motivo_id": _parse_int(motivo_id),
+        "turno": turno,
+        "observacion": form.get("ausencia_observacion") or "",
+        "usuario": (
+            getattr(current_user, "name", None)
+            or getattr(current_user, "email", None)
+            or "unknown"
+        ),
+    }
+
+    return record, errors
+
+
+def _insert_absence(record):
+    sql = """
+        INSERT INTO ausencias (
+            id_jugadora, fecha_inicio, fecha_fin, motivo_id, turno, observacion, usuario
+        ) VALUES (
+            :id_jugadora, :fecha_inicio, :fecha_fin, :motivo_id, :turno, :observacion, :usuario
+        )
+    """
+    db.session.execute(text(sql), record)
+    db.session.commit()
+    cache.clear()
 
 
 def _update_checkout(record):
@@ -656,8 +729,10 @@ def registro():
         "planteles": [],
         "jugadoras": [],
         "pain_zones": [],
+        "absence_reasons": [],
         "selected_planteles": [],
         "turnos": ["Turno 1", "Turno 2", "Turno 3"],
+        "absence_turnos": ["Todos", "Turno 1", "Turno 2", "Turno 3"],
         "wellness_fields": [
             "Recuperación",
             "Energía",
@@ -670,7 +745,10 @@ def registro():
     form_errors = []
     form_data = {
         "fecha_sesion": date.today().isoformat(),
+        "fecha_inicio": date.today().isoformat(),
+        "fecha_fin": date.today().isoformat(),
         "turno": "Turno 1",
+        "ausencia_turno": "Todos",
     }
     saved = request.args.get("saved")
 
@@ -683,6 +761,12 @@ def registro():
             action = request.form.get("action", "checkin")
             if action == "checkout":
                 record, form_errors = _validate_checkout_form(request.form, options["jugadoras"])
+            elif action == "ausencia":
+                record, form_errors = _validate_absence_form(
+                    request.form,
+                    options["jugadoras"],
+                    options["absence_reasons"],
+                )
             else:
                 record, form_errors = _validate_checkin_form(request.form, options["jugadoras"])
             form_data.update(record)
@@ -699,6 +783,9 @@ def registro():
                         )
                     else:
                         return redirect(url_for("dashboard_wellness.registro", saved="checkout"))
+                elif action == "ausencia":
+                    _insert_absence(record)
+                    return redirect(url_for("dashboard_wellness.registro", saved="ausencia"))
                 else:
                     _insert_checkin(record)
                     return redirect(url_for("dashboard_wellness.registro", saved="checkin"))
