@@ -1,0 +1,321 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Registro Wellness{% endblock %}
+
+{% block extra_css %}
+<style>
+    .wellness-entry-page {
+        --entry-surface: rgba(255, 255, 255, 0.94);
+        --entry-border: rgba(15, 23, 42, 0.08);
+        --entry-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+        --entry-ink: #111827;
+        --entry-muted: #6b7280;
+    }
+
+    .entry-surface,
+    .entry-panel {
+        background: var(--entry-surface);
+        border: 1px solid var(--entry-border);
+        border-radius: 8px;
+        box-shadow: var(--entry-shadow);
+        backdrop-filter: blur(6px);
+    }
+
+    .entry-title {
+        color: var(--entry-ink);
+        font-weight: 700;
+        letter-spacing: 0;
+    }
+
+    .entry-subtitle,
+    .entry-muted {
+        color: var(--entry-muted);
+    }
+
+    .entry-badge {
+        border: 1px solid rgba(13, 110, 253, 0.16);
+        background: rgba(13, 110, 253, 0.08);
+        color: #084298;
+        border-radius: 999px;
+        font-weight: 650;
+        padding: 0.35rem 0.65rem;
+        white-space: nowrap;
+    }
+
+    .entry-label {
+        color: var(--entry-muted);
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+    }
+
+    .entry-panel {
+        padding: 1rem;
+    }
+
+    .entry-panel-title {
+        color: var(--entry-ink);
+        font-size: 1rem;
+        font-weight: 700;
+        margin-bottom: 0.25rem;
+    }
+
+    .entry-scale {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 0.5rem;
+    }
+
+    .entry-scale input {
+        text-align: center;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4 wellness-entry-page">
+    <div class="entry-surface p-4 mb-4">
+        <div class="d-flex align-items-start justify-content-between flex-wrap gap-3">
+            <div>
+                <h1 class="h3 mb-1 entry-title">Registro Wellness</h1>
+                <p class="entry-subtitle mb-0">Entrada de Check-in, Check-out/RPE/UA y Ausencias para registros Wellness.</p>
+            </div>
+            <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+                <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('dashboard_wellness.index') }}">
+                    Volver al dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+
+    {% if error %}
+        <div class="alert alert-warning" role="alert">{{ error }}</div>
+    {% endif %}
+
+    {% if saved == "checkin" %}
+        <div class="alert alert-success" role="alert">Check-in guardado correctamente.</div>
+    {% elif saved == "checkout" %}
+        <div class="alert alert-success" role="alert">Check-out guardado correctamente.</div>
+    {% elif saved == "ausencia" %}
+        <div class="alert alert-success" role="alert">Ausencia guardada correctamente.</div>
+    {% endif %}
+
+    {% if form_errors %}
+        <div class="alert alert-danger" role="alert">
+            <div class="fw-semibold mb-1">No se pudo guardar el registro Wellness.</div>
+            <ul class="mb-0">
+                {% for form_error in form_errors %}
+                    <li>{{ form_error }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('dashboard_wellness.registro') }}">
+    <div class="entry-surface p-4 mb-4">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label for="entry-plantel" class="form-label entry-label">Plantel</label>
+                <select id="entry-plantel" name="plantel" class="form-select">
+                    {% for plantel in planteles %}
+                        <option value="{{ plantel }}" {% if plantel in selected_planteles %}selected{% endif %}>{{ plantel }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-5">
+                <label for="entry-jugadora" class="form-label entry-label">Jugadora</label>
+                <select id="entry-jugadora" name="id_jugadora" class="form-select">
+                    {% if jugadoras %}
+                        {% for jugadora in jugadoras %}
+                            <option value="{{ jugadora.id }}" {% if form_data.id_jugadora == jugadora.id %}selected{% endif %}>
+                                {{ jugadora.nombre }}{% if jugadora.plantel %} · {{ jugadora.plantel }}{% endif %}
+                            </option>
+                        {% endfor %}
+                    {% else %}
+                        <option>Sin jugadoras disponibles</option>
+                    {% endif %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="entry-turno" class="form-label entry-label">Turno</label>
+                <select id="entry-turno" name="turno" class="form-select">
+                    {% for turno in turnos %}
+                        <option value="{{ turno }}" {% if form_data.turno == turno %}selected{% endif %}>{{ turno }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="entry-fecha" class="form-label entry-label">Fecha</label>
+                <input id="entry-fecha" name="fecha_sesion" class="form-control" type="date" value="{{ form_data.fecha_sesion }}" required>
+            </div>
+        </div>
+        <p class="entry-muted small mb-0 mt-3">Check-in crea el registro diario. Check-out completa ese registro con minutos, RPE y UA. Ausencias registra periodos sin disponibilidad.</p>
+    </div>
+
+    <ul class="nav nav-tabs mb-3" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="checkin-tab" data-bs-toggle="tab" data-bs-target="#checkin-pane" type="button" role="tab" aria-controls="checkin-pane" aria-selected="true">
+                Check-in
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="checkout-tab" data-bs-toggle="tab" data-bs-target="#checkout-pane" type="button" role="tab" aria-controls="checkout-pane" aria-selected="false">
+                Check-out / RPE / UA
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="ausencias-tab" data-bs-toggle="tab" data-bs-target="#ausencias-pane" type="button" role="tab" aria-controls="ausencias-pane" aria-selected="false">
+                Ausencias
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <div class="tab-pane fade show active" id="checkin-pane" role="tabpanel" aria-labelledby="checkin-tab" tabindex="0">
+            <div class="entry-panel">
+                <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
+                    <div>
+                        <div class="entry-panel-title">Check-in diario</div>
+                        <p class="entry-muted mb-0">Escala Wellness 1-5 para bienestar previo al entrenamiento.</p>
+                    </div>
+                    <span class="entry-badge">Guardar Check-in</span>
+                </div>
+
+                <div class="entry-scale mb-3">
+                    {% set wellness_inputs = [
+                        ('recuperacion', 'Recuperación'),
+                        ('fatiga', 'Energía'),
+                        ('sueno', 'Sueño'),
+                        ('stress', 'Estrés'),
+                        ('dolor', 'Dolor')
+                    ] %}
+                    {% for field_name, field_label in wellness_inputs %}
+                        <div>
+                            <label class="form-label entry-label">{{ field_label }}</label>
+                            <input class="form-control" name="{{ field_name }}" type="number" min="1" max="5" placeholder="1-5" value="{{ form_data[field_name] or '' }}">
+                        </div>
+                    {% endfor %}
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label entry-label">Zona dolor</label>
+                        <select class="form-select" name="id_zona_segmento_dolor">
+                            <option value="">Seleccionar zona</option>
+                            {% for pain_zone in pain_zones %}
+                                <option value="{{ pain_zone.id }}" {% if form_data.id_zona_segmento_dolor|string == pain_zone.id|string %}selected{% endif %}>{{ pain_zone.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label entry-label">Estructura anatomica</label>
+                        <select class="form-select" disabled>
+                            <option>Seleccionar estructura</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label entry-label">Periodización</label>
+                        <input class="form-control" name="periodizacion_tactica" value="{{ form_data.periodizacion_tactica or 'MD+1 / MD-6' }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label entry-label">Estado</label>
+                        <input class="form-control" value="Check-in" disabled>
+                    </div>
+                    <div class="col-md-1 d-flex align-items-end">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="entry-periodo" disabled>
+                            <label class="form-check-label small" for="entry-periodo">Periodo</label>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label entry-label">Observaciones</label>
+                        <textarea class="form-control" name="observacion" rows="3">{{ form_data.observacion or '' }}</textarea>
+                    </div>
+                    <div class="col-12 d-flex justify-content-end">
+                        <button class="btn btn-primary" type="submit" name="action" value="checkin">Guardar Check-in</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="checkout-pane" role="tabpanel" aria-labelledby="checkout-tab" tabindex="0">
+            <div class="entry-panel">
+                <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
+                    <div>
+                        <div class="entry-panel-title">Check-out y carga interna</div>
+                        <p class="entry-muted mb-0">Completa el registro existente con minutos, RPE y UA.</p>
+                    </div>
+                    <span class="entry-badge">Guardar Check-out</span>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label entry-label">Minutos de sesion</label>
+                        <input class="form-control" name="minutos_sesion" type="number" min="1" value="{{ form_data.minutos_sesion or '' }}" placeholder="75">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label entry-label">RPE</label>
+                        <input class="form-control" name="rpe" type="number" min="1" max="10" value="{{ form_data.rpe or '' }}" placeholder="1-10">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label entry-label">UA calculada</label>
+                        <input class="form-control" placeholder="RPE x minutos" disabled>
+                    </div>
+                    <div class="col-12 d-flex justify-content-end">
+                        <button class="btn btn-primary" type="submit" name="action" value="checkout">Guardar Check-out</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="ausencias-pane" role="tabpanel" aria-labelledby="ausencias-tab" tabindex="0">
+            <div class="entry-panel">
+                <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
+                    <div>
+                        <div class="entry-panel-title">Registro de ausencias</div>
+                        <p class="entry-muted mb-0">Guarda ausencias por jugadora, motivo, fechas y turno.</p>
+                    </div>
+                    <span class="entry-badge">Guardar ausencia</span>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label entry-label">Fecha inicio</label>
+                        <input class="form-control" name="fecha_inicio" type="date" value="{{ form_data.fecha_inicio }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label entry-label">Fecha fin</label>
+                        <input class="form-control" name="fecha_fin" type="date" value="{{ form_data.fecha_fin }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label entry-label">Motivo</label>
+                        <select class="form-select" name="motivo_id">
+                            <option value="">Seleccionar motivo</option>
+                            {% for reason in absence_reasons %}
+                                <option value="{{ reason.id }}" {% if form_data.motivo_id|string == reason.id|string %}selected{% endif %}>{{ reason.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label entry-label">Turno</label>
+                        <select class="form-select" name="ausencia_turno">
+                            {% for turno in absence_turnos %}
+                                <option value="{{ turno }}" {% if form_data.ausencia_turno == turno %}selected{% endif %}>{{ turno }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label entry-label">Observaciones</label>
+                        <textarea class="form-control" name="ausencia_observacion" rows="3">{{ form_data.ausencia_observacion or '' }}</textarea>
+                    </div>
+                    <div class="col-12 d-flex justify-content-end">
+                        <button class="btn btn-primary" type="submit" name="action" value="ausencia">Guardar ausencia</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    </form>
+</div>
+{% endblock %}

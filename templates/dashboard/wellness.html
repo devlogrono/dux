@@ -1,0 +1,508 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Wellness{% endblock %}
+
+{% block extra_css %}
+<style>
+    .wellness-page {
+        --wellness-surface: rgba(255, 255, 255, 0.94);
+        --wellness-border: rgba(15, 23, 42, 0.08);
+        --wellness-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+        --wellness-ink: #111827;
+        --wellness-muted: #6b7280;
+    }
+
+    .wellness-surface,
+    .wellness-metric,
+    .wellness-chart,
+    .wellness-table {
+        background: var(--wellness-surface);
+        border: 1px solid var(--wellness-border);
+        border-radius: 8px;
+        box-shadow: var(--wellness-shadow);
+        backdrop-filter: blur(6px);
+    }
+
+    .wellness-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 1.25rem;
+    }
+
+    .wellness-title {
+        color: var(--wellness-ink);
+        font-weight: 700;
+        letter-spacing: 0;
+    }
+
+    .wellness-subtitle {
+        color: var(--wellness-muted);
+        margin-bottom: 0;
+    }
+
+    .wellness-badge {
+        border: 1px solid rgba(25, 135, 84, 0.18);
+        background: rgba(25, 135, 84, 0.1);
+        color: #146c43;
+        border-radius: 999px;
+        font-weight: 600;
+        padding: 0.35rem 0.65rem;
+        white-space: nowrap;
+    }
+
+    .wellness-filter-label,
+    .wellness-section-label,
+    .wellness-metric-label {
+        color: var(--wellness-muted);
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+    }
+
+    .wellness-active-filter {
+        border: 1px solid rgba(13, 110, 253, 0.16);
+        background: rgba(13, 110, 253, 0.08);
+        color: #084298;
+        font-weight: 600;
+    }
+
+    .wellness-metric {
+        min-height: 132px;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+
+    .wellness-metric-value {
+        color: var(--wellness-ink);
+        font-size: 2rem;
+        font-weight: 750;
+        line-height: 1;
+    }
+
+    .wellness-metric-foot {
+        color: var(--wellness-muted);
+        font-size: 0.86rem;
+    }
+
+    .wellness-status {
+        display: inline-flex;
+        align-items: center;
+        width: fit-content;
+        border-radius: 999px;
+        padding: 0.2rem 0.55rem;
+        font-size: 0.78rem;
+        font-weight: 650;
+    }
+
+    .wellness-status-ok {
+        background: rgba(25, 135, 84, 0.12);
+        color: #146c43;
+    }
+
+    .wellness-status-mid {
+        background: rgba(255, 193, 7, 0.18);
+        color: #7a5a00;
+    }
+
+    .wellness-status-risk {
+        background: rgba(220, 53, 69, 0.12);
+        color: #b02a37;
+    }
+
+    .wellness-status-muted {
+        background: rgba(108, 117, 125, 0.12);
+        color: #5c636a;
+    }
+
+    .wellness-chart,
+    .wellness-table {
+        padding: 1rem;
+    }
+
+    .wellness-chart-canvas {
+        height: 260px;
+    }
+
+    .wellness-table table {
+        margin-bottom: 0;
+    }
+
+    .wellness-table thead th {
+        color: var(--wellness-muted);
+        font-size: 0.72rem;
+        letter-spacing: 0;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+
+    @media (max-width: 767.98px) {
+        .wellness-header {
+            flex-direction: column;
+        }
+
+        .wellness-metric {
+            min-height: 112px;
+        }
+
+        .wellness-metric-value {
+            font-size: 1.7rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4 wellness-page">
+    {% set wellness_status_class = 'wellness-status-muted' %}
+    {% if summary.wellness_estado == 'óptimo' %}
+        {% set wellness_status_class = 'wellness-status-ok' %}
+    {% elif summary.wellness_estado == 'moderado' %}
+        {% set wellness_status_class = 'wellness-status-mid' %}
+    {% elif summary.wellness_estado == 'en fatiga' %}
+        {% set wellness_status_class = 'wellness-status-risk' %}
+    {% endif %}
+
+    {% set rpe_status_class = 'wellness-status-muted' %}
+    {% if summary.rpe_estado == 'bajo' %}
+        {% set rpe_status_class = 'wellness-status-ok' %}
+    {% elif summary.rpe_estado == 'moderado' %}
+        {% set rpe_status_class = 'wellness-status-mid' %}
+    {% elif summary.rpe_estado == 'alto' %}
+        {% set rpe_status_class = 'wellness-status-risk' %}
+    {% endif %}
+
+    {% set alerts_status_class = 'wellness-status-ok' if summary.alertas_count == 0 else 'wellness-status-risk' %}
+
+    <div class="wellness-surface p-4 mb-4">
+        <div class="wellness-header">
+            <div>
+                <h1 class="h3 mb-1 wellness-title">Wellness</h1>
+                <p class="wellness-subtitle">Indicadores de bienestar, esfuerzo percibido y carga interna.</p>
+            </div>
+            <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+                <a class="btn btn-outline-primary btn-sm" href="{{ url_for('dashboard_wellness.registro') }}">
+                    Registro Wellness
+                </a>
+            </div>
+        </div>
+
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label for="period" class="form-label wellness-filter-label">Periodo</label>
+                <select id="period" name="period" class="form-select">
+                    {% for option in period_options %}
+                        <option value="{{ option.id }}" {% if option.id == selected_period %}selected{% endif %}>
+                            {{ option.label }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-3">
+                <label for="plantel" class="form-label wellness-filter-label">Plantel</label>
+                <select id="plantel" name="plantel" class="form-select" multiple>
+                    {% for plantel in planteles %}
+                        <option value="{{ plantel }}" {% if plantel in selected_planteles %}selected{% endif %}>
+                            {{ plantel }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-4">
+                <label for="jugadora" class="form-label wellness-filter-label">Jugadora</label>
+                <select id="jugadora" name="jugadora" class="form-select" multiple>
+                    {% for jugadora in visible_jugadoras %}
+                        <option value="{{ jugadora.id }}" {% if jugadora.id in selected_jugadoras %}selected{% endif %}>
+                            {{ jugadora.nombre }}{% if jugadora.plantel %} · {{ jugadora.plantel }}{% endif %}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <label for="tipo" class="form-label wellness-filter-label">Tipo</label>
+                <select id="tipo" name="tipo" class="form-select" multiple>
+                    {% for tipo in tipos %}
+                        <option value="{{ tipo }}" {% if tipo in selected_tipos %}selected{% endif %}>
+                            {{ tipo }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-1 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-fill">Filtrar</button>
+            </div>
+
+            <div class="col-md-2 d-flex gap-2">
+                <a href="{{ url_for('dashboard_wellness.index') }}" class="btn btn-outline-secondary">Limpiar</a>
+            </div>
+        </form>
+
+        <div class="d-flex align-items-center flex-wrap gap-2 mt-3 small text-muted">
+            <span>Filtros activos:</span>
+            <span class="badge wellness-active-filter">{{ days }} días</span>
+            {% for plantel in selected_planteles %}
+                <span class="badge wellness-active-filter">Plantel {{ plantel }}</span>
+            {% endfor %}
+            {% for tipo in selected_tipos %}
+                <span class="badge wellness-active-filter">{{ tipo }}</span>
+            {% endfor %}
+            {% if selected_jugadoras %}
+                <span class="badge wellness-active-filter">{{ selected_jugadoras|length }} jugadora(s)</span>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if error %}
+        <div class="alert alert-warning" role="alert">{{ error }}</div>
+    {% endif %}
+
+    {% if request.args.get('saved') == 'record-deleted' %}
+        <div class="alert alert-success" role="alert">Registro Wellness eliminado correctamente.</div>
+    {% endif %}
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="wellness-metric">
+                <div class="wellness-metric-label">Bienestar promedio</div>
+                <div class="wellness-metric-value">
+                    {{ summary.wellness_promedio if summary.wellness_promedio is not none else '-' }}/25
+                </div>
+                <div class="wellness-metric-foot">
+                    <span class="wellness-status {{ wellness_status_class }}">{{ summary.wellness_estado }}</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="wellness-metric">
+                <div class="wellness-metric-label">RPE promedio</div>
+                <div class="wellness-metric-value">{{ summary.rpe_promedio if summary.rpe_promedio is not none else '-' }}</div>
+                <div class="wellness-metric-foot">
+                    <span class="wellness-status {{ rpe_status_class }}">{{ summary.rpe_estado }}</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="wellness-metric">
+                <div class="wellness-metric-label">Carga interna total</div>
+                <div class="wellness-metric-value">{{ summary.ua_total if summary.ua_total is not none else '-' }}</div>
+                <div class="wellness-metric-foot">UA acumuladas</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="wellness-metric">
+                <div class="wellness-metric-label">Jugadoras en zona roja</div>
+                <div class="wellness-metric-value">
+                    {{ summary.alertas_count }}/{{ summary.alertas_total_jugadoras }}
+                </div>
+                <div class="wellness-metric-foot">
+                    <span class="wellness-status {{ alerts_status_class }}">{{ summary.alertas_pct }}%</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-lg-4">
+            <div class="wellness-chart h-100">
+                <h2 class="wellness-section-label mb-3">Evolución bienestar</h2>
+                <div class="position-relative wellness-chart-canvas">
+                    <canvas id="chart-wellness"
+                        data-labels='{{ charts.labels|tojson }}'
+                        data-values='{{ charts.wellness|tojson }}'></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="wellness-chart h-100">
+                <h2 class="wellness-section-label mb-3">Evolución RPE</h2>
+                <div class="position-relative wellness-chart-canvas">
+                    <canvas id="chart-rpe"
+                        data-labels='{{ charts.labels|tojson }}'
+                        data-values='{{ charts.rpe|tojson }}'></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="wellness-chart h-100">
+                <h2 class="wellness-section-label mb-3">Carga interna diaria</h2>
+                <div class="position-relative wellness-chart-canvas">
+                    <canvas id="chart-ua"
+                        data-labels='{{ charts.labels|tojson }}'
+                        data-values='{{ charts.ua|tojson }}'></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="wellness-table">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <h2 class="h5 mb-0">Últimos registros</h2>
+            <span class="text-muted small">Mostrando hasta 200 de {{ summary.total }} registros</span>
+        </div>
+
+        {% if display_records %}
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Jugadora</th>
+                            <th>Plantel</th>
+                            <th>Tipo</th>
+                            <th>Turno</th>
+                            <th class="text-end">Wellness /25</th>
+                            <th class="text-end">RPE</th>
+                            <th class="text-end">UA</th>
+                            <th>Usuario</th>
+                            {% if can_manage_wellness %}
+                                <th class="text-end">Acciones</th>
+                            {% endif %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for record in display_records %}
+                            <tr>
+                                <td>{{ record.fecha_sesion }}</td>
+                                <td>{{ record.nombre_jugadora }}</td>
+                                <td>{{ record.plantel or '-' }}</td>
+                                <td>{{ record.tipo or '-' }}</td>
+                                <td>{{ record.turno or '-' }}</td>
+                                <td class="text-end">{{ record.wellness_score if record.wellness_score is not none else '-' }}</td>
+                                <td class="text-end">{{ record.rpe if record.rpe is not none else '-' }}</td>
+                                <td class="text-end">{{ record.ua if record.ua is not none else '-' }}</td>
+                                <td>{{ record.usuario or '-' }}</td>
+                                {% if can_manage_wellness %}
+                                    <td class="text-end">
+                                        <div class="d-inline-flex gap-1">
+                                            <form method="post" action="{{ url_for('dashboard_wellness.delete_record', record_id=record.id) }}" onsubmit="return confirm('¿Eliminar este registro Wellness?');">
+                                                <button class="btn btn-outline-danger btn-sm" type="submit">Eliminar</button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                {% endif %}
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p class="text-muted mb-0">No hay registros de Wellness para los filtros seleccionados.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+function parseChartData(canvasId) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) {
+        return null;
+    }
+    return {
+        canvas,
+        labels: JSON.parse(canvas.dataset.labels || '[]'),
+        values: JSON.parse(canvas.dataset.values || '[]')
+    };
+}
+
+function buildLineChart(canvasId, label, color, maxY) {
+    const data = parseChartData(canvasId);
+    if (!data) {
+        return;
+    }
+    const ctx = data.canvas.getContext('2d');
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.labels,
+            datasets: [{
+                label,
+                data: data.values,
+                borderColor: color,
+                backgroundColor: color.replace('1)', '0.16)'),
+                fill: true,
+                tension: 0.28,
+                pointRadius: 3,
+                pointHoverRadius: 5
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: (ctx) => `${label}: ${ctx.parsed.y ?? '-'}` } }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    suggestedMax: maxY,
+                    ticks: { color: '#222' },
+                    grid: { color: '#e5e7eb' }
+                },
+                x: {
+                    ticks: { color: '#222', maxRotation: 45, autoSkip: true },
+                    grid: { display: false }
+                }
+            }
+        }
+    });
+}
+
+function buildBarChart(canvasId, label, color) {
+    const data = parseChartData(canvasId);
+    if (!data) {
+        return;
+    }
+    const ctx = data.canvas.getContext('2d');
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.labels,
+            datasets: [{
+                label,
+                data: data.values,
+                backgroundColor: color,
+                borderColor: color,
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: (ctx) => `${label}: ${ctx.parsed.y ?? '-'}` } }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { color: '#222' },
+                    grid: { color: '#e5e7eb' }
+                },
+                x: {
+                    ticks: { color: '#222', maxRotation: 45, autoSkip: true },
+                    grid: { display: false }
+                }
+            }
+        }
+    });
+}
+
+buildLineChart('chart-wellness', 'Bienestar /25', 'rgba(13, 110, 253, 1)', 25);
+buildLineChart('chart-rpe', 'RPE', 'rgba(220, 53, 69, 1)', 10);
+buildBarChart('chart-ua', 'UA', 'rgba(25, 135, 84, 0.72)');
+</script>
+{% endblock %}
