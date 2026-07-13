@@ -1,0 +1,1411 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}Physical - Grupal{% endblock %}
+
+{% block extra_css %}
+<style>
+  .physical-card {
+    background: rgba(255,255,255,.94);
+    border-radius: 1rem;
+    box-shadow: 0 10px 30px rgba(15,23,42,.16);
+  }
+
+  .kpi-card {
+    border: 0;
+    border-radius: 1rem;
+    box-shadow: 0 8px 20px rgba(15,23,42,.10);
+    height: 100%;
+  }
+
+  .kpi-label {
+    font-size: .76rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+
+  .kpi-value {
+    font-size: 1.45rem;
+    font-weight: 700;
+    color: #111827;
+  }
+
+  .kpi-delta {
+    font-size: .85rem;
+    font-weight: 600;
+  }
+
+  .section-title {
+    font-weight: 700;
+    color: #111827;
+  }
+
+  .period-toggle .btn {
+    min-width: 9rem;
+  }
+
+  .physical-tabs .nav-link {
+    color: #495057;
+    font-weight: 600;
+  }
+
+  .physical-tabs .nav-link.active {
+    color: #0d6efd;
+  }
+
+  .physical-chart {
+    min-height: 650px;
+  }
+
+  .quadrant-dot {
+    display: inline-block;
+    width: .7rem;
+    height: .7rem;
+    border-radius: 50%;
+    margin-right: .4rem;
+  }
+
+  .summary-table th,
+  .summary-table td {
+    text-align: center;
+    vertical-align: middle;
+  }
+
+  .summary-table td:first-child,
+  .summary-table th:first-child {
+    text-align: left;
+  }
+
+  .cell-success,
+  .cell-success-strong,
+  .cell-warning,
+  .cell-warning-soft,
+  .cell-danger {
+    color: #fff;
+    font-weight: 700;
+  }
+
+  .cell-success { background-color: #2ECC71 !important; }
+  .cell-success-strong { background-color: #0F766E !important; }
+  .cell-warning { background-color: #F39C12 !important; }
+  .cell-warning-soft {
+    background-color: #F1C40F !important;
+    color: #111827;
+  }
+  .cell-danger { background-color: #E74C3C !important; }
+
+  .status-badge {
+    font-weight: 700;
+  }
+
+  .status-success {
+    background-color: #2ECC71 !important;
+    color: #fff !important;
+  }
+
+  .status-excellent {
+    background-color: #0F766E !important;
+    color: #fff !important;
+    border: 1px solid rgba(13, 148, 136, .55);
+  }
+
+  .status-excellent::before {
+    content: "★ ";
+  }
+
+  .status-warning {
+    background-color: #F39C12 !important;
+    color: #fff !important;
+  }
+
+  .status-danger {
+    background-color: #E74C3C !important;
+    color: #fff !important;
+  }
+
+  .status-secondary {
+    background-color: #6c757d !important;
+    color: #fff !important;
+  }
+
+  .status-badge.status-excellent::before {
+    content: "★ " !important;
+  }
+</style>
+{% endblock %}
+
+{% macro fmt_value(value, decimals=1, unit='') -%}
+  {%- if value is none -%}
+    -
+  {%- elif decimals == 2 -%}
+    {{ "%.2f"|format(value) }}{% if unit %} {{ unit }}{% endif %}
+  {%- else -%}
+    {{ "%.1f"|format(value) }}{% if unit %} {{ unit }}{% endif %}
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro fmt_delta(value) -%}
+  {%- if value is none -%}
+    Sin comparativa
+  {%- else -%}
+    {{ "%+.2f"|format(value) }}%
+  {%- endif -%}
+{%- endmacro %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+  <div class="physical-card p-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+      <div>
+        <h1 class="section-title mb-1">Physical - Analisis grupal</h1>
+        <p class="text-muted mb-0">
+          Vista grupal read-only de registros antropometricos ISAK.
+        </p>
+      </div>
+
+      <form method="get" class="d-flex flex-wrap gap-2 align-items-end">
+        <input type="hidden" name="periodo" value="{{ periodo }}">
+        <div>
+          <label for="plantel" class="form-label small text-muted mb-1">Plantel</label>
+          <select id="plantel" name="plantel" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="">Todos</option>
+            {% for c in competitions %}
+              <option value="{{ c.codigo }}" {% if plantel == c.codigo|string %}selected{% endif %}>
+                {{ c.nombre }}{% if c.codigo %} ({{ c.codigo }}){% endif %}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {% if plantel %}
+          <a href="{{ url_for('dashboard_physical.grupal', periodo=periodo) }}" class="btn btn-outline-secondary btn-sm">
+            Limpiar
+          </a>
+        {% endif %}
+
+        <a href="{{ url_for('dashboard_physical.index') }}" class="btn btn-outline-primary btn-sm">
+          Inicio Physical
+        </a>
+      </form>
+    </div>
+  </div>
+
+  <div class="physical-card p-3 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+      <div>
+        <div class="kpi-label">Periodo</div>
+        <div class="fw-semibold text-dark">{{ period_label|capitalize }}</div>
+        <div class="text-muted small">
+          {{ stats.period_players }} jugadoras y {{ stats.period_records }} registros en el calculo.
+        </div>
+      </div>
+
+      <div class="btn-group period-toggle" role="group" aria-label="Periodo">
+        <a
+          class="btn btn-sm {% if periodo == 'ultima' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+          href="{{ url_for('dashboard_physical.grupal', plantel=plantel, periodo='ultima') }}"
+        >
+          Ultima medicion
+        </a>
+        <a
+          class="btn btn-sm {% if periodo == 'historico' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+          href="{{ url_for('dashboard_physical.grupal', plantel=plantel, periodo='historico') }}"
+        >
+          Ultimos 6 meses
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    {% for metric in group_metrics %}
+      <div class="col-12 col-md-6 col-xl">
+        <div class="card kpi-card">
+          <div class="card-body">
+            <div class="kpi-label">{{ metric.label }}</div>
+            <div class="kpi-value">{{ fmt_value(metric.value, metric.decimals, metric.unit) }}</div>
+            <div class="kpi-delta text-{% if metric.delta is none %}muted{% elif metric.delta < 0 %}danger{% else %}success{% endif %}">
+              {{ fmt_delta(metric.delta) }}
+            </div>
+            <div class="small text-muted">
+              {% if periodo == 'ultima' %}
+                vs medicion anterior
+              {% else %}
+                vs inicio del periodo
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="physical-card p-4 mb-4">
+    <h4 class="section-title mb-3">Resumen tecnico:</h4>
+    <p class="mb-2">
+      El grupo presenta un peso medio de
+      <strong>{{ fmt_value(technical_summary.peso_medio.value, technical_summary.peso_medio.decimals, technical_summary.peso_medio.unit) }}</strong>,
+      con porcentaje de grasa
+      <span class="badge status-badge status-{{ technical_summary.grasa_media.status_class }}">
+        {{ technical_summary.grasa_media.status|lower }}
+      </span>
+      ({{ fmt_value(technical_summary.grasa_media.value, technical_summary.grasa_media.decimals, technical_summary.grasa_media.unit) }})
+      y porcentaje muscular
+      <span class="badge status-badge status-{{ technical_summary.musculo_medio.status_class }}">
+        {{ technical_summary.musculo_medio.status|lower }}
+      </span>
+      ({{ fmt_value(technical_summary.musculo_medio.value, technical_summary.musculo_medio.decimals, technical_summary.musculo_medio.unit) }}).
+    </p>
+    <p class="mb-0">
+      El indice musculo / oseo medio se situa en nivel
+      <span class="badge status-badge status-{{ technical_summary.imo_medio.status_class }}">
+        {{ technical_summary.imo_medio.status|lower }}
+      </span>
+      ({{ fmt_value(technical_summary.imo_medio.value, technical_summary.imo_medio.decimals, technical_summary.imo_medio.unit) }}),
+      mientras que la suma de 6 pliegues refleja un perfil
+      <span class="badge status-badge status-{{ technical_summary.pliegues_media.status_class }}">
+        {{ technical_summary.pliegues_media.status|lower }}
+      </span>
+      ({{ fmt_value(technical_summary.pliegues_media.value, technical_summary.pliegues_media.decimals, technical_summary.pliegues_media.unit) }}).
+    </p>
+  </div>
+
+  <div class="physical-card p-4 mb-4">
+    <h4 class="section-title mb-3">Interpretacion de metricas</h4>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Metrica</th>
+            <th>Valor</th>
+            <th>Estado</th>
+            <th>Interpretacion</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for metric in group_metrics %}
+            <tr>
+              <td>{{ metric.label }}</td>
+              <td>{{ fmt_value(metric.value, metric.decimals, metric.unit) }}</td>
+              <td>
+                <span class="badge status-badge status-{{ metric.status_class }}">{{ metric.status }}</span>
+              </td>
+              <td>{{ metric.interpretation }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="mt-3">
+      <p class="small text-muted mb-2">Consulta los rangos de referencia de cada metrica</p>
+      <div class="accordion" id="referenceRangesAccordion">
+        {% for metric_range in reference_ranges %}
+          <div class="accordion-item">
+            <h2 class="accordion-header" id="referenceRangeHeading{{ loop.index }}">
+              <button
+                class="accordion-button collapsed"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#referenceRangeCollapse{{ loop.index }}"
+                aria-expanded="false"
+                aria-controls="referenceRangeCollapse{{ loop.index }}"
+              >
+                {{ metric_range.label }}
+              </button>
+            </h2>
+            <div
+              id="referenceRangeCollapse{{ loop.index }}"
+              class="accordion-collapse collapse"
+              aria-labelledby="referenceRangeHeading{{ loop.index }}"
+              data-bs-parent="#referenceRangesAccordion"
+            >
+              <div class="accordion-body">
+                <div class="table-responsive">
+                  <table class="table table-sm align-middle mb-0">
+                    <thead>
+                      <tr>
+                        <th>Estado</th>
+                        <th>Rango</th>
+                        <th>Interpretacion</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for item in metric_range["items"] %}
+                        <tr>
+                          <td><span class="badge status-badge status-{{ item.class }}">{{ item.status }}</span></td>
+                          <td class="fw-semibold">{{ item.range }}</td>
+                          <td>{{ item.interpretation }}</td>
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="physical-card p-4 mb-4">
+    <ul class="nav nav-tabs physical-tabs" id="physicalGrupalTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="perfil-tab" data-bs-toggle="tab" data-bs-target="#perfil-pane" type="button" role="tab" aria-controls="perfil-pane" aria-selected="true">
+          Perfil antropometrico
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="distribucion-tab" data-bs-toggle="tab" data-bs-target="#distribucion-pane" type="button" role="tab" aria-controls="distribucion-pane" aria-selected="false">
+          Distribucion corporal
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="comparacion-tab" data-bs-toggle="tab" data-bs-target="#comparacion-pane" type="button" role="tab" aria-controls="comparacion-pane" aria-selected="false">
+          Comparacion de mediciones
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="cambios-tab" data-bs-toggle="tab" data-bs-target="#cambios-pane" type="button" role="tab" aria-controls="cambios-pane" aria-selected="false">
+          Cambios clave
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="evolucion-tab" data-bs-toggle="tab" data-bs-target="#evolucion-pane" type="button" role="tab" aria-controls="evolucion-pane" aria-selected="false">
+          Evolucion temporal
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="estructural-tab" data-bs-toggle="tab" data-bs-target="#estructural-pane" type="button" role="tab" aria-controls="estructural-pane" aria-selected="false">
+          Perfil estructural
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="resumen-tab" data-bs-toggle="tab" data-bs-target="#resumen-pane" type="button" role="tab" aria-controls="resumen-pane" aria-selected="false">
+          Resumen grupal
+        </button>
+      </li>
+    </ul>
+
+    <div class="tab-content pt-4" id="physicalGrupalTabsContent">
+      <div class="tab-pane fade show active" id="perfil-pane" role="tabpanel" aria-labelledby="perfil-tab" tabindex="0">
+        {% set perfil = grupal_charts.perfil_antropometrico %}
+        {% if perfil.points %}
+          <div id="perfilAntropometricoChart" class="physical-chart"></div>
+
+          <div class="row g-3 mt-2">
+            <div class="col-12 col-lg-6">
+              <div class="small text-muted">
+                Eje X: suma de 6 pliegues. Eje Y: indice musculo / oseo. Las lineas dividen los cuadrantes de referencia del grafico original.
+              </div>
+            </div>
+            <div class="col-12 col-lg-6">
+              <div class="d-flex flex-wrap gap-3 small">
+                <span><span class="quadrant-dot" style="background:#2ECC71"></span>G1: {{ perfil.counts.G1 }} jugadoras</span>
+                <span><span class="quadrant-dot" style="background:#F1C40F"></span>G2: {{ perfil.counts.G2 }} jugadoras</span>
+                <span><span class="quadrant-dot" style="background:#F39C12"></span>G3: {{ perfil.counts.G3 }} jugadoras</span>
+                <span><span class="quadrant-dot" style="background:#E74C3C"></span>G4: {{ perfil.counts.G4 }} jugadoras</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion mt-3" id="perfilInterpretacion">
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#perfilInterpretacionBody" aria-expanded="false" aria-controls="perfilInterpretacionBody">
+                  Interpretacion del perfil antropometrico
+                </button>
+              </h2>
+              <div id="perfilInterpretacionBody" class="accordion-collapse collapse" data-bs-parent="#perfilInterpretacion">
+                <div class="accordion-body">
+                  <div class="mb-2"><span style="color:#2ECC71;"><strong>G1 - Alto en musculo / Bajo en grasa</strong></span>: perfil corporal optimo para el rendimiento deportivo. Se asocia a mayor eficiencia mecanica, buena potencia relativa y menor lastre corporal.</div>
+                  <div class="mb-2"><span style="color:#F1C40F;"><strong>G2 - Alto en musculo / Alto en grasa</strong></span>: buen desarrollo muscular con margen de mejora en la composicion corporal.</div>
+                  <div class="mb-2"><span style="color:#F39C12;"><strong>G3 - Bajo en musculo / Bajo en grasa</strong></span>: perfil corporal ligero con posible deficit estructural y margen de trabajo orientado al desarrollo muscular.</div>
+                  <div><span style="color:#E74C3C;"><strong>G4 - Bajo en musculo / Alto en grasa</strong></span>: perfil menos favorable para el rendimiento fisico; prioriza mejorar composicion corporal y desarrollo funcional.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        {% else %}
+          <div class="alert alert-warning mb-0">
+            No hay valores validos para generar el perfil antropometrico.
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="tab-pane fade" id="distribucion-pane" role="tabpanel" aria-labelledby="distribucion-tab" tabindex="0">
+        {% set distribucion = grupal_charts.distribucion_corporal %}
+        {% if distribucion.metrics %}
+          <div class="row g-3 align-items-end mb-3">
+            <div class="col-12 col-md-4 col-xl-3">
+              <label for="distributionMetric" class="form-label small text-muted mb-1">Seleccione la metrica</label>
+              <select id="distributionMetric" class="form-select form-select-sm">
+                {% for metric_key, metric in distribucion.metrics.items() %}
+                  <option value="{{ metric_key }}" {% if metric_key == distribucion.default_metric %}selected{% endif %}>
+                    {{ metric.label }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-md-8 col-xl-9">
+              <div id="distributionCaption" class="small text-muted"></div>
+            </div>
+          </div>
+
+          <div id="distribucionCorporalChart" style="min-height:470px;"></div>
+
+          <div class="row g-3 mt-2">
+            <div class="col-12 col-lg-5">
+              <h6 id="distributionSummaryTitle" class="fw-bold mb-2"></h6>
+              <div id="distributionSummaryStats" class="small text-muted"></div>
+            </div>
+            <div class="col-12 col-lg-7">
+              <div id="distributionBuckets" class="d-flex flex-wrap gap-3 small"></div>
+              <div id="distributionLegend" class="small text-muted mt-2"></div>
+            </div>
+          </div>
+        {% else %}
+          <div class="alert alert-warning mb-0">
+            No hay metricas disponibles para la distribucion corporal.
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="tab-pane fade" id="comparacion-pane" role="tabpanel" aria-labelledby="comparacion-tab" tabindex="0">
+        {% set comparacion = grupal_charts.comparacion_mediciones %}
+        {% if comparacion.metrics %}
+          <p class="small text-muted mb-3">{{ comparacion.caption }}</p>
+          <div id="comparacionMedicionesChart" style="min-height:430px;"></div>
+
+          <div class="mt-3">
+            <h6 class="fw-bold mb-2">Interpretacion de los resultados</h6>
+            <div class="row g-2">
+              {% for metric in comparacion.metrics %}
+                <div class="col-12 col-md-6 col-xl-4">
+                  <div class="border rounded p-2 h-100">
+                    <strong>{{ metric.full_label }}</strong>:
+                    {% if metric.positive_good is none %}
+                      {{ "%+.2f"|format(metric.delta_pct) }}%
+                    {% elif metric.delta_pct == 0 %}
+                      Sin cambios relevantes
+                    {% elif (metric.delta_pct > 0 and metric.positive_good) or (metric.delta_pct < 0 and not metric.positive_good) %}
+                      <span class="text-success fw-semibold">Mejora ({{ "%+.2f"|format(metric.delta_pct) }}%)</span>
+                    {% else %}
+                      <span class="text-danger fw-semibold">Empeoramiento ({{ "%+.2f"|format(metric.delta_pct) }}%)</span>
+                    {% endif %}
+                    <div class="small text-muted">{{ metric.n }} jugadoras comparadas</div>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% else %}
+          <div class="alert alert-warning mb-0">
+            Sin datos suficientes.
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="tab-pane fade" id="cambios-pane" role="tabpanel" aria-labelledby="cambios-tab" tabindex="0">
+        {% if cambios_clave.metrics %}
+          <p class="small text-muted mb-3">{{ cambios_clave.caption }}</p>
+
+          <div class="row g-3 align-items-end mb-3">
+            <div class="col-12 col-md-4">
+              <label for="changesMetric" class="form-label small text-muted mb-1">Selecciona la metrica</label>
+              <select id="changesMetric" class="form-select form-select-sm">
+                {% for metric_key, metric in cambios_clave.metrics.items() %}
+                  <option value="{{ metric_key }}" {% if metric_key == cambios_clave.default_metric %}selected{% endif %}>
+                    {{ metric.label }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-md-3">
+              <label for="changesTopN" class="form-label small text-muted mb-1">Mostrar top</label>
+              <select id="changesTopN" class="form-select form-select-sm">
+                <option value="3">3</option>
+                <option value="5" selected>5</option>
+                <option value="10">10</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="row g-4">
+            <div class="col-12 col-xl-6">
+              <h5 class="section-title mb-3">Mayores mejoras</h5>
+              <div class="table-responsive">
+                <table class="table table-hover align-middle summary-table" id="changesImproveTable">
+                  <thead>
+                    <tr>
+                      <th>Jugadora</th>
+                      <th>Valor inicial</th>
+                      <th>Valor final</th>
+                      <th>Cambio</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="col-12 col-xl-6">
+              <h5 class="section-title mb-3">Mayores empeoramientos</h5>
+              <div class="table-responsive">
+                <table class="table table-hover align-middle summary-table" id="changesWorseTable">
+                  <thead>
+                    <tr>
+                      <th>Jugadora</th>
+                      <th>Valor inicial</th>
+                      <th>Valor final</th>
+                      <th>Cambio</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        {% else %}
+          <div class="alert alert-warning mb-0">
+            Sin datos suficientes.
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="tab-pane fade" id="evolucion-pane" role="tabpanel" aria-labelledby="evolucion-tab" tabindex="0">
+        {% set evolucion = grupal_charts.evolucion_temporal %}
+        {% if evolucion.metrics %}
+          <p class="small text-muted mb-3">{{ evolucion.caption }}</p>
+          <div class="row g-3 align-items-end mb-3">
+            <div class="col-12 col-md-4">
+              <label for="timelineMetric" class="form-label small text-muted mb-1">Selecciona la metrica</label>
+              <select id="timelineMetric" class="form-select form-select-sm">
+                {% for metric_key, metric in evolucion.metrics.items() %}
+                  <option value="{{ metric_key }}" {% if metric_key == evolucion.default_metric %}selected{% endif %}>
+                    {{ metric.label }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-md-4">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" value="1" id="timelineRange" checked>
+                <label class="form-check-label small text-muted" for="timelineRange">
+                  Mostrar rango min-max
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div id="evolucionTemporalChart" style="min-height:430px;"></div>
+          <div class="row g-3 mt-2">
+            <div class="col-12 col-md-6">
+              <div id="timelineSummaryLeft" class="small text-muted"></div>
+            </div>
+            <div class="col-12 col-md-6">
+              <div id="timelineSummaryRight" class="small text-muted"></div>
+            </div>
+          </div>
+          <p class="small text-muted mb-0 mt-2">
+            Cada punto representa una ronda completa de medicion agrupada en ventanas de hasta 7 dias.
+          </p>
+        {% else %}
+          <div class="alert alert-warning mb-0">
+            Sin datos suficientes.
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="tab-pane fade" id="estructural-pane" role="tabpanel" aria-labelledby="estructural-tab" tabindex="0">
+        {% set estructural = grupal_charts.perfil_estructural %}
+        {% if estructural.mapa.points %}
+          <div id="perfilEstructuralChart" class="physical-chart"></div>
+
+          <div class="row g-3 mt-2">
+            <div class="col-12 col-lg-6">
+              <div class="small text-muted">
+                Eje X: ratio envergadura / talla. Eje Y: ratio muslo / pantorrilla. Las lineas dividen por promedio grupal.
+              </div>
+            </div>
+            <div class="col-12 col-lg-6">
+              <div class="d-flex flex-wrap gap-3 small">
+                <span><span class="quadrant-dot" style="background:#2ECC71"></span>G1: {{ estructural.mapa.counts.G1 }} jugadoras</span>
+                <span><span class="quadrant-dot" style="background:#F1C40F"></span>G2: {{ estructural.mapa.counts.G2 }} jugadoras</span>
+                <span><span class="quadrant-dot" style="background:#F39C12"></span>G3: {{ estructural.mapa.counts.G3 }} jugadoras</span>
+                <span><span class="quadrant-dot" style="background:#E74C3C"></span>G4: {{ estructural.mapa.counts.G4 }} jugadoras</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion mt-3 mb-4" id="estructuralInterpretacion">
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#estructuralInterpretacionBody" aria-expanded="false" aria-controls="estructuralInterpretacionBody">
+                  Interpretacion del perfil estructural
+                </button>
+              </h2>
+              <div id="estructuralInterpretacionBody" class="accordion-collapse collapse" data-bs-parent="#estructuralInterpretacion">
+                <div class="accordion-body">
+                  <div class="mb-2"><span style="color:#2ECC71;"><strong>G1 - Mayor envergadura relativa y mayor desarrollo de tren inferior</strong></span>: perfil estructural favorable para acciones amplias y produccion de fuerza.</div>
+                  <div class="mb-2"><span style="color:#F1C40F;"><strong>G2 - Menor envergadura relativa y mayor desarrollo de tren inferior</strong></span>: perfil mas compacto con predominio relativo del tren inferior.</div>
+                  <div class="mb-2"><span style="color:#F39C12;"><strong>G3 - Menor envergadura relativa y menor desarrollo de tren inferior</strong></span>: perfil mas ligero o menos dominante estructuralmente.</div>
+                  <div><span style="color:#E74C3C;"><strong>G4 - Mayor envergadura relativa y menor desarrollo de tren inferior</strong></span>: perfil mas longilineo, con margen potencial de desarrollo en tren inferior.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        {% else %}
+          <div class="alert alert-warning mb-4">
+            Sin datos suficientes.
+          </div>
+        {% endif %}
+
+        {% if estructural.ratios.ratios %}
+          <hr>
+          <p class="small text-muted mb-3">{{ estructural.ratios.caption }}</p>
+          <div class="row g-3 align-items-end mb-3">
+            <div class="col-12 col-md-4">
+              <label for="structuralRatio" class="form-label small text-muted mb-1">Seleccione el ratio</label>
+              <select id="structuralRatio" class="form-select form-select-sm">
+                {% for ratio_key, ratio in estructural.ratios.ratios.items() %}
+                  <option value="{{ ratio_key }}" {% if ratio_key == estructural.ratios.default_ratio %}selected{% endif %}>
+                    {{ ratio.label }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div id="ratiosEstructuralesChart" style="min-height:460px;"></div>
+          <div class="row g-3 mt-2">
+            <div class="col-12 col-md-5">
+              <div id="structuralRatioSummary" class="small text-muted"></div>
+            </div>
+            <div class="col-12 col-md-7">
+              <div id="structuralRatioReading" class="small text-muted"></div>
+            </div>
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="tab-pane fade" id="resumen-pane" role="tabpanel" aria-labelledby="resumen-tab" tabindex="0">
+        {% if resumen_grupal.rows %}
+          <p class="small text-muted">
+            Valores promedio de los controles antropometricos registrados para cada jugadora durante el periodo seleccionado.
+          </p>
+
+          <div class="row g-3 align-items-end mb-3">
+            <div class="col-12 col-md-4">
+              <label for="summarySortBy" class="form-label small text-muted mb-1">Ordenar por</label>
+              <select id="summarySortBy" class="form-select form-select-sm">
+                {% for option in resumen_grupal.sort_options %}
+                  <option value="{{ option.key }}">{{ option.label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-md-4">
+              <label for="summarySortMode" class="form-label small text-muted mb-1">Mostrar</label>
+              <select id="summarySortMode" class="form-select form-select-sm">
+                <option value="best">Mejores primero</option>
+                <option value="worst">Peores primero</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="table table-hover align-middle summary-table" id="summaryGroupTable">
+              <thead>
+                <tr>
+                  {% for column in resumen_grupal.columns %}
+                    <th>{{ column.label }}</th>
+                  {% endfor %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in resumen_grupal.rows %}
+                  <tr
+                    data-peso_medio="{{ row.peso_medio if row.peso_medio is not none else '' }}"
+                    data-grasa_media="{{ row.grasa_media if row.grasa_media is not none else '' }}"
+                    data-musculo_media="{{ row.musculo_media if row.musculo_media is not none else '' }}"
+                    data-pliegues_media="{{ row.pliegues_media if row.pliegues_media is not none else '' }}"
+                    data-imo_media="{{ row.imo_media if row.imo_media is not none else '' }}"
+                    data-n_mediciones="{{ row.n_mediciones }}"
+                    data-jugadora="{{ row.jugadora }}"
+                  >
+                    {% for column in resumen_grupal.columns %}
+                      {% set value = row[column.key] %}
+                      <td class="{{ row.cells[column.key] }}">
+                        {% if column.key == 'jugadora' %}
+                          {{ value }}
+                        {% elif value is none %}
+                          -
+                        {% elif column.decimals == 0 %}
+                          {{ "%.0f"|format(value) }}
+                        {% else %}
+                          {{ "%.2f"|format(value) }}
+                        {% endif %}
+                      </td>
+                    {% endfor %}
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="alert alert-warning mb-0">
+            No hay datos disponibles para resumir.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="physical-card p-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h4 class="section-title mb-1">Ultima medicion por jugadora</h4>
+        <p class="text-muted mb-0">
+          Tabla base para construir despues distribucion, perfil antropometrico y comparativas.
+        </p>
+      </div>
+    </div>
+
+    {% if latest_records %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle">
+          <thead>
+            <tr>
+              <th>Jugadora</th>
+              <th>Plantel</th>
+              <th>Fecha</th>
+              <th>Peso</th>
+              <th>Talla</th>
+              <th>Suma 6 pliegues</th>
+              <th>% Grasa</th>
+              <th>% Muscular</th>
+              <th>Indice M/O</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in latest_records %}
+              <tr>
+                <td>{{ r.nombre_jugadora }}</td>
+                <td>{{ r.plantel }}</td>
+                <td>{{ r.fecha_medicion or "-" }}</td>
+                <td>{{ r.peso_bruto_kg or "-" }}</td>
+                <td>{{ r.talla_corporal_cm or "-" }}</td>
+                <td>{{ r.suma_6_pliegues_mm or "-" }}</td>
+                <td>{{ r.ajuste_adiposa_pct or "-" }}</td>
+                <td>{{ r.ajuste_muscular_pct or "-" }}</td>
+                <td>{{ r.idx_musculo_oseo or "-" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="alert alert-warning mb-0">
+        No hay registros antropometricos para el filtro seleccionado.
+      </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const profileData = {{ grupal_charts.perfil_antropometrico|tojson }};
+    const distributionData = {{ grupal_charts.distribucion_corporal|tojson }};
+    const comparisonData = {{ grupal_charts.comparacion_mediciones|tojson }};
+    const changesData = {{ cambios_clave|tojson }};
+    const timelineData = {{ grupal_charts.evolucion_temporal|tojson }};
+    const structuralData = {{ grupal_charts.perfil_estructural|tojson }};
+    const summarySortOptions = {{ resumen_grupal.sort_options|tojson }};
+
+    function renderPerfilAntropometrico() {
+      const chartEl = document.getElementById("perfilAntropometricoChart");
+      if (!chartEl || !profileData.points || profileData.points.length === 0 || !window.Plotly) {
+        return;
+      }
+
+      const trace = {
+        x: profileData.points.map((point) => point.x),
+        y: profileData.points.map((point) => point.y),
+        mode: "markers",
+        type: "scatter",
+        marker: {
+          size: 10,
+          color: profileData.points.map((point) => point.color),
+          line: { width: 1, color: "white" }
+        },
+        customdata: profileData.points.map((point) => point.label),
+        hovertemplate: "<b>%{customdata}</b><br>Suma 6 pliegues: %{x:.1f} mm<br>Indice musculo/oseo: %{y:.2f}<extra></extra>",
+        showlegend: false
+      };
+
+      const layout = {
+        title: { text: "Perfil antropometrico grupal", x: 0.02, font: { size: 18 } },
+        xaxis: { title: "Suma 6 pliegues (mm)", range: profileData.x_range, gridcolor: "#ECF0F1" },
+        yaxis: { title: "Indice musculo / oseo", range: profileData.y_range, gridcolor: "#ECF0F1" },
+        template: "plotly_white",
+        height: 650,
+        margin: { l: 48, r: 24, t: 80, b: 56 },
+        shapes: [
+          {
+            type: "line",
+            x0: profileData.x_cut,
+            x1: profileData.x_cut,
+            y0: profileData.y_range[0],
+            y1: profileData.y_range[1],
+            line: { color: "#9CA3AF", width: 1.2 }
+          },
+          {
+            type: "line",
+            x0: profileData.x_range[0],
+            x1: profileData.x_range[1],
+            y0: profileData.y_cut,
+            y1: profileData.y_cut,
+            line: { color: "#9CA3AF", width: 1.2 }
+          }
+        ],
+        annotations: [
+          { x: 40, y: 4.4, text: "<b>G1</b>", showarrow: false },
+          { x: 115, y: 4.4, text: "<b>G2</b>", showarrow: false },
+          { x: 40, y: 3.3, text: "<b>G3</b>", showarrow: false },
+          { x: 115, y: 3.3, text: "<b>G4</b>", showarrow: false }
+        ]
+      };
+
+      Plotly.newPlot(chartEl, [trace], layout, { responsive: true, displayModeBar: false });
+    }
+
+    function renderDistribucionCorporal(metricKey) {
+      const chartEl = document.getElementById("distribucionCorporalChart");
+      if (!chartEl || !window.Plotly || !distributionData.metrics) {
+        return;
+      }
+
+      const metric = distributionData.metrics[metricKey];
+      if (!metric || !metric.points || metric.points.length === 0) {
+        return;
+      }
+
+      const values = metric.points.map((point) => point.value);
+      const yMax = Math.max.apply(null, values);
+      const refValue = metric.reference ? metric.reference.value : metric.summary.mean;
+      const lineColor = metric.reference ? "#7F8C8D" : "#27AE60";
+      const lineDash = metric.reference ? "dot" : "dash";
+      const lineText = metric.reference ? metric.reference.label : "Promedio";
+
+      const trace = {
+        x: metric.points.map((point) => point.jugadora),
+        y: values,
+        type: "bar",
+        text: values.map((value) => value.toFixed(1)),
+        textposition: "outside",
+        marker: { color: metric.points.map((point) => point.color) },
+        hovertemplate: "<b>%{x}</b><br>" + metric.label + ": %{y:.1f}<extra></extra>",
+        showlegend: false
+      };
+
+      const layout = {
+        template: "plotly_white",
+        xaxis: { title: "", tickangle: -45, tickfont: { size: 10 } },
+        yaxis: { title: metric.label, range: [0, Math.max(yMax * 1.18, refValue * 1.12)] },
+        height: 470,
+        margin: { t: 60, b: 120, l: 56, r: 24 },
+        showlegend: false,
+        shapes: [
+          {
+            type: "line",
+            xref: "paper",
+            x0: 0,
+            x1: 1,
+            y0: refValue,
+            y1: refValue,
+            line: { color: lineColor, width: 1.4, dash: lineDash }
+          }
+        ],
+        annotations: [
+          {
+            xref: "paper",
+            x: 0,
+            y: refValue,
+            text: lineText,
+            showarrow: false,
+            xanchor: "left",
+            yanchor: "bottom",
+            font: { color: lineColor, size: 12 }
+          }
+        ]
+      };
+
+      Plotly.newPlot(chartEl, [trace], layout, { responsive: true, displayModeBar: false });
+
+      const caption = document.getElementById("distributionCaption");
+      const title = document.getElementById("distributionSummaryTitle");
+      const stats = document.getElementById("distributionSummaryStats");
+      const buckets = document.getElementById("distributionBuckets");
+      const legend = document.getElementById("distributionLegend");
+
+      if (caption) caption.textContent = metric.caption;
+      if (title) title.textContent = metric.label;
+      if (stats) {
+        stats.innerHTML = [
+          "<div><strong>Promedio:</strong> " + metric.summary.mean.toFixed(2) + "</div>",
+          "<div><strong>Minimo:</strong> " + metric.summary.min.toFixed(2) + "</div>",
+          "<div><strong>Maximo:</strong> " + metric.summary.max.toFixed(2) + "</div>"
+        ].join("");
+      }
+      if (buckets) {
+        buckets.innerHTML = (metric.buckets || []).map((bucket) => (
+          '<span><span class="quadrant-dot" style="background:' + bucket.color + '"></span><strong style="color:' + bucket.color + '">' + bucket.label + '</strong>: ' + bucket.count + '</span>'
+        )).join("");
+      }
+      if (legend) {
+        legend.textContent = metric.descriptiva ? "" : "Rangos de referencia aplicados segun la metrica seleccionada.";
+      }
+    }
+
+    function setupDistribucionSelector() {
+      const selector = document.getElementById("distributionMetric");
+      if (!selector) return;
+      renderDistribucionCorporal(selector.value);
+      selector.addEventListener("change", function () {
+        renderDistribucionCorporal(selector.value);
+      });
+    }
+
+    function renderComparacionMediciones() {
+      const chartEl = document.getElementById("comparacionMedicionesChart");
+      if (!chartEl || !window.Plotly || !comparisonData.metrics || comparisonData.metrics.length === 0) {
+        return;
+      }
+
+      const values = comparisonData.metrics.map((metric) => metric.delta_pct);
+      const trace = {
+        x: comparisonData.metrics.map((metric) => metric.label),
+        y: values,
+        type: "bar",
+        marker: { color: comparisonData.metrics.map((metric) => metric.color) },
+        text: values.map((value) => (value >= 0 ? "+" : "") + value.toFixed(2) + "%"),
+        textposition: "outside",
+        textfont: { size: 12, color: "#2C3E50" },
+        hovertemplate: "<b>%{x}</b><br>%{y:+.2f}%<extra></extra>",
+        showlegend: false
+      };
+
+      const layout = {
+        yaxis: {
+          title: comparisonData.axis_title,
+          range: comparisonData.y_range,
+          zeroline: true,
+          zerolinewidth: 2,
+          zerolinecolor: "#BDC3C7"
+        },
+        xaxis: { title: "" },
+        template: "plotly_white",
+        showlegend: false,
+        height: 430,
+        margin: { t: 50, b: 50, l: 56, r: 24 }
+      };
+
+      Plotly.newPlot(chartEl, [trace], layout, { responsive: true, displayModeBar: false });
+    }
+
+    function escapeHtml(value) {
+      return String(value || "").replace(/[&<>"']/g, function (char) {
+        return {
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;"
+        }[char];
+      });
+    }
+
+    function formatChangeRow(row) {
+      const delta = row.delta_pct;
+      const deltaClass = delta > 0 ? "text-success" : (delta < 0 ? "text-danger" : "text-muted");
+      const deltaText = (delta >= 0 ? "+" : "") + delta.toFixed(2) + "%";
+      return [
+        "<tr>",
+        "<td>" + escapeHtml(row.jugadora) + "</td>",
+        "<td>" + row.valor_inicial.toFixed(2) + "</td>",
+        "<td>" + row.valor_final.toFixed(2) + "</td>",
+        '<td class="' + deltaClass + ' fw-semibold">' + deltaText + "</td>",
+        "</tr>"
+      ].join("");
+    }
+
+    function renderCambiosClave() {
+      const metricSelector = document.getElementById("changesMetric");
+      const topSelector = document.getElementById("changesTopN");
+      const improveBody = document.querySelector("#changesImproveTable tbody");
+      const worseBody = document.querySelector("#changesWorseTable tbody");
+      if (!metricSelector || !topSelector || !improveBody || !worseBody || !changesData.metrics) {
+        return;
+      }
+
+      const metric = changesData.metrics[metricSelector.value];
+      const topN = parseInt(topSelector.value, 10) || 5;
+      if (!metric) {
+        improveBody.innerHTML = '<tr><td colspan="4">Sin datos suficientes.</td></tr>';
+        worseBody.innerHTML = '<tr><td colspan="4">Sin datos suficientes.</td></tr>';
+        return;
+      }
+
+      const improveRows = (metric.top_mejora || []).slice(0, topN);
+      const worseRows = (metric.top_empeora || []).slice(0, topN);
+      improveBody.innerHTML = improveRows.length
+        ? improveRows.map(formatChangeRow).join("")
+        : '<tr><td colspan="4">Sin datos suficientes.</td></tr>';
+      worseBody.innerHTML = worseRows.length
+        ? worseRows.map(formatChangeRow).join("")
+        : '<tr><td colspan="4">Sin datos suficientes.</td></tr>';
+    }
+
+    function setupCambiosClave() {
+      const metricSelector = document.getElementById("changesMetric");
+      const topSelector = document.getElementById("changesTopN");
+      if (!metricSelector || !topSelector) return;
+      renderCambiosClave();
+      metricSelector.addEventListener("change", renderCambiosClave);
+      topSelector.addEventListener("change", renderCambiosClave);
+    }
+
+    function renderEvolucionTemporal() {
+      const chartEl = document.getElementById("evolucionTemporalChart");
+      const selector = document.getElementById("timelineMetric");
+      const rangeToggle = document.getElementById("timelineRange");
+      if (!chartEl || !selector || !window.Plotly || !timelineData.metrics) {
+        return;
+      }
+
+      const metric = timelineData.metrics[selector.value];
+      if (!metric || !metric.points || metric.points.length < 2) {
+        return;
+      }
+
+      const labels = metric.points.map((point) => point.label);
+      const traces = [];
+      if (!rangeToggle || rangeToggle.checked) {
+        traces.push({
+          x: labels,
+          y: metric.points.map((point) => point.max),
+          mode: "lines",
+          line: { width: 0 },
+          hoverinfo: "skip",
+          showlegend: false
+        });
+        traces.push({
+          x: labels,
+          y: metric.points.map((point) => point.min),
+          mode: "lines",
+          fill: "tonexty",
+          fillcolor: "rgba(74,111,191,0.12)",
+          line: { width: 0 },
+          hoverinfo: "skip",
+          showlegend: false
+        });
+      }
+
+      traces.push({
+        x: labels,
+        y: metric.points.map((point) => point.mean),
+        mode: "lines+markers",
+        type: "scatter",
+        line: { width: 3, color: "#4A6FBF" },
+        marker: { size: 7 },
+        name: "Promedio grupal",
+        hovertemplate: "<b>%{x}</b><br>" + metric.label + ": %{y:.2f}<extra></extra>",
+        showlegend: false
+      });
+
+      const shapes = [];
+      const annotations = [];
+      if (metric.reference) {
+        shapes.push({
+          type: "line",
+          xref: "paper",
+          x0: 0,
+          x1: 1,
+          y0: metric.reference.value,
+          y1: metric.reference.value,
+          line: { color: "#7F8C8D", width: 1.4, dash: "dot" }
+        });
+        annotations.push({
+          xref: "paper",
+          x: 0,
+          y: metric.reference.value,
+          text: metric.reference.label,
+          showarrow: false,
+          xanchor: "left",
+          yanchor: "bottom",
+          font: { color: "#7F8C8D", size: 12 }
+        });
+      }
+
+      const layout = {
+        template: "plotly_white",
+        xaxis: { title: "Ronda de medicion" },
+        yaxis: { title: metric.label },
+        height: 430,
+        showlegend: false,
+        margin: { t: 50, b: 40, l: 56, r: 24 },
+        shapes: shapes,
+        annotations: annotations
+      };
+
+      Plotly.newPlot(chartEl, traces, layout, { responsive: true, displayModeBar: false });
+
+      const left = document.getElementById("timelineSummaryLeft");
+      const right = document.getElementById("timelineSummaryRight");
+      if (left) {
+        left.innerHTML = [
+          "<div><strong>Inicio del periodo:</strong> " + metric.summary.inicio.toFixed(2) + "</div>",
+          "<div><strong>Final del periodo:</strong> " + metric.summary.final.toFixed(2) + "</div>",
+          "<div><strong>Cambio total:</strong> " + (metric.summary.delta_total >= 0 ? "+" : "") + metric.summary.delta_total.toFixed(2) + "%</div>"
+        ].join("");
+      }
+      if (right) {
+        right.innerHTML = [
+          "<div><strong>Rondas registradas:</strong> " + metric.summary.n_rondas + "</div>",
+          "<div><strong>Registros utilizados:</strong> " + metric.summary.n_registros + "</div>"
+        ].join("");
+      }
+    }
+
+    function setupEvolucionTemporal() {
+      const selector = document.getElementById("timelineMetric");
+      const rangeToggle = document.getElementById("timelineRange");
+      if (!selector) return;
+      renderEvolucionTemporal();
+      selector.addEventListener("change", renderEvolucionTemporal);
+      if (rangeToggle) rangeToggle.addEventListener("change", renderEvolucionTemporal);
+    }
+
+    function renderPerfilEstructural() {
+      const chartEl = document.getElementById("perfilEstructuralChart");
+      const mapData = structuralData.mapa || {};
+      if (!chartEl || !window.Plotly || !mapData.points || mapData.points.length === 0) {
+        return;
+      }
+
+      const trace = {
+        x: mapData.points.map((point) => point.x),
+        y: mapData.points.map((point) => point.y),
+        mode: "markers",
+        type: "scatter",
+        marker: {
+          size: 10,
+          color: mapData.points.map((point) => point.color),
+          line: { width: 1, color: "white" }
+        },
+        customdata: mapData.points.map((point) => point.label),
+        hovertemplate: "<b>%{customdata}</b><br>Ratio envergadura / talla: %{x:.3f}<br>Ratio muslo / pantorrilla: %{y:.3f}<extra></extra>",
+        showlegend: false
+      };
+
+      const layout = {
+        title: { text: "Perfil estructural grupal", x: 0.02, font: { size: 18 } },
+        xaxis: { title: "Ratio envergadura / talla", range: mapData.x_range, gridcolor: "#ECF0F1" },
+        yaxis: { title: "Ratio muslo / pantorrilla", range: mapData.y_range, gridcolor: "#ECF0F1" },
+        template: "plotly_white",
+        height: 650,
+        margin: { l: 48, r: 24, t: 80, b: 56 },
+        shapes: [
+          {
+            type: "line",
+            x0: mapData.x_cut,
+            x1: mapData.x_cut,
+            y0: mapData.y_range[0],
+            y1: mapData.y_range[1],
+            line: { color: "#9CA3AF", width: 1.2 }
+          },
+          {
+            type: "line",
+            x0: mapData.x_range[0],
+            x1: mapData.x_range[1],
+            y0: mapData.y_cut,
+            y1: mapData.y_cut,
+            line: { color: "#9CA3AF", width: 1.2 }
+          }
+        ],
+        annotations: [
+          { x: mapData.x_range[0] + 0.01, y: mapData.y_range[1] - 0.01, text: "<b>G1</b>", showarrow: false },
+          { x: mapData.x_range[1] - 0.01, y: mapData.y_range[1] - 0.01, text: "<b>G2</b>", showarrow: false },
+          { x: mapData.x_range[0] + 0.01, y: mapData.y_range[0] + 0.01, text: "<b>G3</b>", showarrow: false },
+          { x: mapData.x_range[1] - 0.01, y: mapData.y_range[0] + 0.01, text: "<b>G4</b>", showarrow: false }
+        ]
+      };
+
+      Plotly.newPlot(chartEl, [trace], layout, { responsive: true, displayModeBar: false });
+    }
+
+    function renderRatiosEstructurales() {
+      const chartEl = document.getElementById("ratiosEstructuralesChart");
+      const selector = document.getElementById("structuralRatio");
+      const ratioData = structuralData.ratios || {};
+      if (!chartEl || !selector || !window.Plotly || !ratioData.ratios) {
+        return;
+      }
+
+      const ratio = ratioData.ratios[selector.value];
+      if (!ratio || !ratio.points || ratio.points.length === 0) {
+        return;
+      }
+
+      const values = ratio.points.map((point) => point.value);
+      const trace = {
+        x: ratio.points.map((point) => point.jugadora),
+        y: values,
+        type: "bar",
+        text: values.map((value) => value.toFixed(2)),
+        textposition: "outside",
+        marker: { color: "#4A6FBF" },
+        hovertemplate: "<b>%{x}</b><br>" + ratio.label + ": %{y:.2f}<extra></extra>",
+        showlegend: false
+      };
+
+      const layout = {
+        template: "plotly_white",
+        xaxis: { title: "", tickangle: -45, tickfont: { size: 10 } },
+        yaxis: { title: ratio.label, range: [0, Math.max.apply(null, values) * 1.18] },
+        height: 460,
+        margin: { t: 60, b: 120, l: 56, r: 24 },
+        showlegend: false,
+        shapes: [
+          {
+            type: "line",
+            xref: "paper",
+            x0: 0,
+            x1: 1,
+            y0: ratio.summary.mean,
+            y1: ratio.summary.mean,
+            line: { color: "#27AE60", width: 1.4, dash: "dash" }
+          }
+        ],
+        annotations: [
+          {
+            xref: "paper",
+            x: 0,
+            y: ratio.summary.mean,
+            text: "Promedio",
+            showarrow: false,
+            xanchor: "left",
+            yanchor: "bottom",
+            font: { color: "#27AE60", size: 12 }
+          }
+        ]
+      };
+
+      Plotly.newPlot(chartEl, [trace], layout, { responsive: true, displayModeBar: false });
+
+      const summary = document.getElementById("structuralRatioSummary");
+      const reading = document.getElementById("structuralRatioReading");
+      if (summary) {
+        summary.innerHTML = [
+          "<div><strong>Promedio:</strong> " + ratio.summary.mean.toFixed(3) + "</div>",
+          "<div><strong>Minimo:</strong> " + ratio.summary.min.toFixed(3) + "</div>",
+          "<div><strong>Maximo:</strong> " + ratio.summary.max.toFixed(3) + "</div>"
+        ].join("");
+      }
+      if (reading) {
+        reading.innerHTML = "<strong>Lectura:</strong> " + escapeHtml(ratio.reading);
+      }
+    }
+
+    function setupPerfilEstructural() {
+      const selector = document.getElementById("structuralRatio");
+      renderPerfilEstructural();
+      renderRatiosEstructurales();
+      if (selector) selector.addEventListener("change", renderRatiosEstructurales);
+    }
+
+    function setupSummarySorting() {
+      const table = document.getElementById("summaryGroupTable");
+      const sortBy = document.getElementById("summarySortBy");
+      const sortMode = document.getElementById("summarySortMode");
+      if (!table || !sortBy || !sortMode) return;
+
+      const optionMap = {};
+      summarySortOptions.forEach((option) => {
+        optionMap[option.key] = option;
+      });
+
+      function sortRows() {
+        const key = sortBy.value;
+        const mode = sortMode.value;
+        const option = optionMap[key] || {};
+        const rows = Array.from(table.querySelectorAll("tbody tr"));
+
+        rows.sort((a, b) => {
+          const aValue = parseFloat(a.getAttribute("data-" + key));
+          const bValue = parseFloat(b.getAttribute("data-" + key));
+          const aMissing = Number.isNaN(aValue);
+          const bMissing = Number.isNaN(bValue);
+
+          if (aMissing && bMissing) {
+            return (a.getAttribute("data-jugadora") || "").localeCompare(b.getAttribute("data-jugadora") || "");
+          }
+          if (aMissing) return 1;
+          if (bMissing) return -1;
+
+          let ascending;
+          if (option.higher_better === null || option.higher_better === undefined) {
+            ascending = mode === "best";
+          } else {
+            ascending = mode === "best" ? !option.higher_better : option.higher_better;
+          }
+
+          if (aValue === bValue) {
+            return (a.getAttribute("data-jugadora") || "").localeCompare(b.getAttribute("data-jugadora") || "");
+          }
+
+          return ascending ? aValue - bValue : bValue - aValue;
+        });
+
+        const tbody = table.querySelector("tbody");
+        rows.forEach((row) => tbody.appendChild(row));
+      }
+
+      sortBy.addEventListener("change", sortRows);
+      sortMode.addEventListener("change", sortRows);
+      sortRows();
+    }
+
+    renderPerfilAntropometrico();
+    setupDistribucionSelector();
+    renderComparacionMediciones();
+    setupCambiosClave();
+    setupEvolucionTemporal();
+    setupPerfilEstructural();
+    setupSummarySorting();
+
+    document.querySelectorAll('button[data-bs-toggle="tab"]').forEach((tabButton) => {
+      tabButton.addEventListener("shown.bs.tab", function () {
+        const profileEl = document.getElementById("perfilAntropometricoChart");
+        const distributionEl = document.getElementById("distribucionCorporalChart");
+        const comparisonEl = document.getElementById("comparacionMedicionesChart");
+        const timelineEl = document.getElementById("evolucionTemporalChart");
+        const structuralEl = document.getElementById("perfilEstructuralChart");
+        const ratiosEl = document.getElementById("ratiosEstructuralesChart");
+        if (window.Plotly && profileEl) Plotly.Plots.resize(profileEl);
+        if (window.Plotly && distributionEl) Plotly.Plots.resize(distributionEl);
+        if (window.Plotly && comparisonEl) Plotly.Plots.resize(comparisonEl);
+        if (window.Plotly && timelineEl) Plotly.Plots.resize(timelineEl);
+        if (window.Plotly && structuralEl) Plotly.Plots.resize(structuralEl);
+        if (window.Plotly && ratiosEl) Plotly.Plots.resize(ratiosEl);
+      });
+    });
+  });
+</script>
+{% endblock %}

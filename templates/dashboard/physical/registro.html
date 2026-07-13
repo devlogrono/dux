@@ -1,0 +1,637 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}Physical - Registro{% endblock %}
+
+{% block extra_css %}
+<style>
+  .physical-card {
+    background: rgba(255,255,255,.94);
+    border-radius: 1rem;
+    box-shadow: 0 10px 30px rgba(15,23,42,.16);
+  }
+
+  .section-title {
+    font-weight: 700;
+    color: #111827;
+  }
+
+  .kpi-label {
+    font-size: .76rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+
+  .player-avatar {
+    width: 96px;
+    height: 96px;
+    display: grid;
+    place-items: center;
+    border-radius: 1rem;
+    background: #f1f5f9;
+    color: #0f172a;
+    font-size: 2rem;
+    font-weight: 800;
+    box-shadow: inset 0 0 0 1px rgba(15,23,42,.08);
+  }
+
+  .registro-player-card {
+    min-height: 236px;
+  }
+
+  .registro-photo-shell {
+    width: min(190px, 36vw);
+    height: 220px;
+    border-radius: 1rem;
+    overflow: hidden;
+    background: #f1f5f9;
+    box-shadow: inset 0 0 0 1px rgba(15,23,42,.08);
+    flex: 0 0 auto;
+  }
+
+  .registro-player-photo {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .registro-avatar-fallback {
+    width: 100%;
+    height: 100%;
+    border-radius: 1rem;
+    font-size: 4rem;
+  }
+
+  .player-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .75rem 1.25rem;
+  }
+
+  .player-meta-item {
+    min-width: 0;
+  }
+
+  .form-section {
+    border: 1px solid rgba(15,23,42,.08);
+    border-radius: 1rem;
+    background: rgba(255,255,255,.72);
+  }
+
+  .form-section-title {
+    font-weight: 700;
+    color: #111827;
+  }
+
+  .upload-zone {
+    border: 2px dashed rgba(13,110,253,.35);
+    border-radius: 1rem;
+    background: rgba(13,110,253,.04);
+  }
+
+  .upload-help {
+    color: #64748b;
+    font-weight: 600;
+  }
+
+  .preview-empty {
+    border: 1px dashed rgba(108,117,125,.35);
+    border-radius: 1rem;
+    background: #f8fafc;
+  }
+
+  .field-locked {
+    background-color: #f8fafc;
+    color: #64748b;
+  }
+
+  .validation-list {
+    margin-bottom: 0;
+  }
+
+  @media (max-width: 767.98px) {
+    .registro-player-card {
+      min-height: 0;
+    }
+
+    .registro-photo-shell {
+      width: 128px;
+      height: 160px;
+    }
+
+    .player-meta-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+  <div class="physical-card p-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+      <div>
+        <h1 class="section-title mb-1">Physical - Registro</h1>
+        <p class="text-muted mb-0">
+          Registro ISAK por formulario o importacion vertical desde Excel.
+        </p>
+      </div>
+
+      <form method="get" class="d-flex flex-wrap gap-2 align-items-end">
+        <div>
+          <label for="plantel" class="form-label small text-muted mb-1">Plantel</label>
+          <select id="plantel" name="plantel" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="">Todos</option>
+            {% for c in competitions %}
+              <option value="{{ c.codigo }}" {% if plantel == c.codigo|string %}selected{% endif %}>
+                {{ c.nombre }}{% if c.codigo %} ({{ c.codigo }}){% endif %}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label for="posicion" class="form-label small text-muted mb-1">Posicion</label>
+          <select id="posicion" name="posicion" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="">Todas</option>
+            {% for option in position_options %}
+              <option value="{{ option }}" {% if posicion == option %}selected{% endif %}>{{ option }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label for="jugadora" class="form-label small text-muted mb-1">Jugadora</label>
+          <select id="jugadora" name="jugadora" class="form-select form-select-sm" onchange="this.form.submit()">
+            {% if not players %}
+              <option value="">Sin jugadoras</option>
+            {% endif %}
+            {% for player in players %}
+              <option value="{{ player.id }}" {% if player.id == selected_player_id|string %}selected{% endif %}>
+                {{ player.nombre }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <div class="form-label small text-muted mb-1">Tipo de registro</div>
+          <div class="btn-group btn-group-sm" role="group" aria-label="Tipo de registro">
+            <input type="radio" class="btn-check" name="tipo_registro" id="tipoFormulario" value="formulario" autocomplete="off" onchange="this.form.submit()" {% if tipo_registro == 'formulario' %}checked{% endif %}>
+            <label class="btn btn-outline-primary" for="tipoFormulario">Formulario</label>
+            <input type="radio" class="btn-check" name="tipo_registro" id="tipoArchivo" value="archivo" autocomplete="off" onchange="this.form.submit()" {% if tipo_registro == 'archivo' %}checked{% endif %}>
+            <label class="btn btn-outline-primary" for="tipoArchivo">Archivo</label>
+          </div>
+        </div>
+
+        {% if plantel or posicion or selected_player_id or tipo_registro != "formulario" %}
+          <a href="{{ url_for('dashboard_physical.registro') }}" class="btn btn-outline-secondary btn-sm">
+            Limpiar
+          </a>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+
+  <div class="alert {% if modo_registro == 'SEGUIMIENTO' %}alert-info{% else %}alert-success{% endif %} border-0 shadow-sm mb-4">
+    <strong>{{ modo_registro_label }}.</strong>
+    {% if modo_registro == "SEGUIMIENTO" %}
+      Se precargan los valores RAW de la ultima medicion disponible y se bloquean solo los campos estructurales.
+    {% else %}
+      No hay mediciones previas para esta jugadora; los campos estructurales quedan editables.
+    {% endif %}
+  </div>
+
+  {% if validation_result and validation_result.submitted %}
+    {% if validation_result.is_valid %}
+      <div class="alert alert-success border-0 shadow-sm mb-4">
+        <strong>{% if tipo_registro == "archivo" %}Archivo listo para guardar.{% else %}Formulario listo para guardar.{% endif %}</strong>
+        Validacion completada. Pulsa Guardar medicion para insertar el registro ISAK.
+      </div>
+    {% else %}
+      <div class="alert alert-danger border-0 shadow-sm mb-4">
+        <strong>Errores de validacion.</strong>
+        <ul class="validation-list mt-2">
+          {% for error in validation_result.errors %}
+            <li>{{ error }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+  {% endif %}
+
+  {% if selected_player %}
+    <div class="physical-card registro-player-card p-3 p-md-4 mb-4">
+      <div class="d-flex flex-column flex-md-row align-items-start gap-3 gap-md-4">
+        <div class="registro-photo-shell">
+          <img
+            src="{{ url_for('dashboard_physical.player_photo', identificacion=selected_player.id) }}"
+            alt="{{ selected_player.nombre }}"
+            class="registro-player-photo"
+            onerror="this.classList.add('d-none'); this.nextElementSibling.classList.remove('d-none');"
+          >
+          <div class="player-avatar registro-avatar-fallback d-none">
+            {{ (selected_player.nombre or "?")[:1]|upper }}
+          </div>
+        </div>
+
+        <div class="flex-grow-1 w-100">
+          <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+            <div>
+              <div class="kpi-label">Jugadora seleccionada</div>
+              <h3 class="section-title mb-1">{{ selected_player.nombre }}</h3>
+              <div class="d-flex flex-wrap gap-2">
+                {% if selected_player.dorsal %}
+                  <span class="badge bg-primary">Dorsal {{ selected_player.dorsal }}</span>
+                {% endif %}
+                <span class="badge bg-light text-dark border">ID {{ selected_player.id }}</span>
+                {% if selected_player.plantel %}
+                  <span class="badge bg-light text-dark border">{{ selected_player.plantel }}</span>
+                {% endif %}
+              </div>
+            </div>
+            <div class="text-md-end">
+              <div class="kpi-label">Ultimo registro</div>
+              <div class="fw-semibold">
+                {% if latest_record %}
+                  {{ latest_record.fecha_medicion or "-" }}
+                {% else %}
+                  Sin registros previos
+                {% endif %}
+              </div>
+              <div class="small text-muted">{{ player_records|length }} mediciones disponibles</div>
+            </div>
+          </div>
+
+          <div class="player-meta-grid">
+            <div class="player-meta-item">
+              <div class="kpi-label">Posicion</div>
+              <div class="fw-semibold">{{ selected_player.posicion or "No disponible" }}</div>
+            </div>
+            <div class="player-meta-item">
+              <div class="kpi-label">Pais / nacionalidad</div>
+              <div class="fw-semibold">{{ selected_player.nacionalidad or "No disponible" }}</div>
+            </div>
+            <div class="player-meta-item">
+              <div class="kpi-label">Edad</div>
+              <div class="fw-semibold">{% if selected_player.edad %}{{ selected_player.edad }} anos{% else %}No disponible{% endif %}</div>
+            </div>
+            <div class="player-meta-item">
+              <div class="kpi-label">Modo</div>
+              <div class="fw-semibold">{% if modo_registro == "SEGUIMIENTO" %}Seguimiento{% else %}Completo{% endif %}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  {% else %}
+    <div class="alert alert-info mb-4">
+      Selecciona un plantel, una posicion y una jugadora para preparar el registro.
+    </div>
+  {% endif %}
+
+  <div class="physical-card p-4 mb-4">
+    <ul class="nav nav-tabs" id="registroTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="registro-formulario-tab" data-bs-toggle="tab" data-bs-target="#registro-formulario-pane" type="button" role="tab" aria-controls="registro-formulario-pane" aria-selected="true">
+          Formulario
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="registro-preview-tab" data-bs-toggle="tab" data-bs-target="#registro-preview-pane" type="button" role="tab" aria-controls="registro-preview-pane" aria-selected="false">
+          Previsualizar
+        </button>
+      </li>
+    </ul>
+
+    <div class="tab-content pt-4">
+      <div class="tab-pane fade show active" id="registro-formulario-pane" role="tabpanel" aria-labelledby="registro-formulario-tab" tabindex="0">
+        {% if tipo_registro == "archivo" %}
+          <form
+            id="registroArchivoForm"
+            method="post"
+            enctype="multipart/form-data"
+            action="{{ url_for('dashboard_physical.registro', plantel=plantel, posicion=posicion, jugadora=selected_player_id, tipo_registro=tipo_registro) }}"
+          >
+            <input type="hidden" name="id_jugadora" value="{{ selected_player_id or '' }}">
+            <input type="hidden" name="_modo" value="{{ modo_registro }}">
+            <input type="hidden" name="tipo_isak" value="COMPLETO">
+            <input type="hidden" name="metodo" value="ISAK">
+            <div class="upload-zone p-4 mb-4">
+              <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+                <div>
+                  <h4 class="form-section-title mb-1">Carga desde archivo ISAK</h4>
+                  <p class="text-muted mb-1">Excel vertical con nombre del campo en columna A y valor en columna B, desde fila 5.</p>
+                  <div class="upload-help">200MB per file · XLS, XLSX</div>
+                </div>
+                <span class="badge bg-primary">Excel</span>
+              </div>
+              <div class="row g-3 mt-2">
+                <div class="col-12 col-lg-4">
+                  <label for="registroFechaArchivo" class="form-label small text-muted mb-1">Fecha de medicion</label>
+                  <input
+                    id="registroFechaArchivo"
+                    name="fecha_medicion"
+                    type="date"
+                    class="form-control"
+                    value="{% if validation_result and validation_result.record %}{{ validation_result.record.fecha_medicion }}{% endif %}"
+                  >
+                </div>
+                <div class="col-12 col-lg-5">
+                  <label for="registroArchivo" class="form-label small text-muted mb-1">Archivo</label>
+                  <input id="registroArchivo" name="registro_archivo" type="file" class="form-control" accept=".xlsx,.xls">
+                  <div class="form-text">Formatos admitidos: .xls y .xlsx. CSV no esta disponible para ISAK.</div>
+                </div>
+                <div class="col-12 col-lg-3">
+                  <label for="registroHoja" class="form-label small text-muted mb-1">Hoja ISAK</label>
+                  <input id="registroHoja" name="registro_hoja" type="text" class="form-control" placeholder="Activa por defecto" value="{% if validation_result and validation_result.file_sheet %}{{ validation_result.file_sheet }}{% endif %}">
+                </div>
+              </div>
+            </div>
+          </form>
+
+          {% if validation_result and validation_result.record and validation_result.is_valid %}
+            <form
+              id="registroArchivoRecordForm"
+              method="post"
+              action="{{ url_for('dashboard_physical.registro', plantel=plantel, posicion=posicion, jugadora=selected_player_id, tipo_registro=tipo_registro) }}"
+            >
+              {% for key, value in validation_result.record.items() %}
+                <input type="hidden" name="{{ key }}" value="{% if value is not none %}{{ value }}{% endif %}">
+              {% endfor %}
+            </form>
+          {% endif %}
+
+          <div class="alert alert-info mb-0">
+            El archivo se prevalida y se guarda como una unica medicion para la jugadora seleccionada.
+          </div>
+        {% else %}
+          <form
+            id="registroIsakForm"
+            method="post"
+            action="{{ url_for('dashboard_physical.registro', plantel=plantel, posicion=posicion, jugadora=selected_player_id, tipo_registro=tipo_registro) }}"
+          >
+            <input type="hidden" name="id_jugadora" value="{{ selected_player_id or '' }}">
+            <input type="hidden" name="_modo" value="{{ modo_registro }}">
+            <input type="hidden" name="tipo_isak" value="COMPLETO">
+            {% for section in form_sections %}
+              <div class="physical-card form-section p-4 mb-4">
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                  <div>
+                    <h4 class="form-section-title mb-1">{{ section.title }}</h4>
+                    <p class="text-muted mb-0">{{ section.help }}</p>
+                  </div>
+                  <span class="badge bg-light text-dark border">
+                    {% if modo_registro == "SEGUIMIENTO" %}Seguimiento{% else %}Completo{% endif %}
+                  </span>
+                </div>
+
+                <div class="row g-3">
+                  {% for field in section.fields %}
+                    <div class="{% if field.type == 'textarea' %}col-12{% else %}col-12 col-md-6 col-xl-4{% endif %}">
+                      <label for="{{ field.name }}" class="form-label small text-muted mb-1">{{ field.label }}</label>
+                      {% if field.type == "textarea" %}
+                        <textarea
+                          id="{{ field.name }}"
+                          name="{{ field.name }}"
+                          class="form-control js-registro-field {% if field.disabled %}field-locked{% endif %}"
+                          rows="4"
+                          placeholder="Observaciones de la sesion"
+                          data-label="{{ field.label }}"
+                          data-section="{{ section.title }}"
+                          data-unit=""
+                          {% if field.disabled %}disabled{% endif %}
+                        >{% if field.value is not none %}{{ field.value }}{% endif %}</textarea>
+                      {% else %}
+                        <div class="input-group">
+                          <input
+                            id="{{ field.name }}"
+                            name="{{ field.name }}"
+                            type="{{ field.type }}"
+                            class="form-control js-registro-field {% if field.disabled %}field-locked{% endif %}"
+                            placeholder="Pendiente"
+                            value="{% if field.value is not none %}{{ field.value }}{% endif %}"
+                            data-label="{{ field.label }}"
+                            data-section="{{ section.title }}"
+                            data-unit="{{ field.unit }}"
+                            {% if field.type == 'number' %}step="0.01"{% endif %}
+                            {% if field.disabled %}disabled{% endif %}
+                          >
+                          {% if field.unit %}
+                            <span class="input-group-text">{{ field.unit }}</span>
+                          {% endif %}
+                        </div>
+                      {% endif %}
+                      {% if field.disabled %}
+                        <input type="hidden" name="{{ field.name }}" value="{% if field.value is not none %}{{ field.value }}{% endif %}">
+                      {% endif %}
+                      {% if field.disabled and field.lock_reason %}
+                        <div class="form-text">{{ field.lock_reason }}</div>
+                      {% endif %}
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+            {% endfor %}
+          </form>
+        {% endif %}
+      </div>
+
+      <div class="tab-pane fade" id="registro-preview-pane" role="tabpanel" aria-labelledby="registro-preview-tab" tabindex="0">
+        {% if tipo_registro == "archivo" %}
+          {% if validation_result and validation_result.file_analysis %}
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+              <div>
+                <h4 class="form-section-title mb-1">Previsualizacion de archivo</h4>
+                <p class="text-muted mb-0">
+                  Hoja procesada: {{ validation_result.file_sheet }}.
+                </p>
+              </div>
+              <span class="badge {% if validation_result.file_analysis.is_valid %}bg-success{% else %}bg-warning text-dark{% endif %}">
+                {{ validation_result.file_analysis.matched_count }} / {{ validation_result.file_analysis.total_fields }} campos
+              </span>
+            </div>
+            <div class="row g-3 mb-4">
+              <div class="col-12 col-md-4">
+                <div class="border rounded p-3 bg-white h-100">
+                  <div class="kpi-label">Cobertura</div>
+                  <div class="h4 mb-0">{{ validation_result.file_analysis.coverage_pct }}%</div>
+                </div>
+              </div>
+              <div class="col-12 col-md-4">
+                <div class="border rounded p-3 bg-white h-100">
+                  <div class="kpi-label">Campos reconocidos</div>
+                  <div class="h4 mb-0">{{ validation_result.file_analysis.matched_count }}</div>
+                </div>
+              </div>
+              <div class="col-12 col-md-4">
+                <div class="border rounded p-3 bg-white h-100">
+                  <div class="kpi-label">Estado</div>
+                  <div class="h5 mb-0">{% if validation_result.is_valid %}Listo para guardar{% else %}Revisar errores{% endif %}</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table table-sm align-middle">
+                <thead>
+                  <tr>
+                    <th>Campo ISAK</th>
+                    <th>Valor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for key, value in validation_result.record.items() %}
+                    {% if value is not none and key not in ["usuario", "estatus_id", "tipo_isak", "_modo"] %}
+                      <tr>
+                        <td>{{ key }}</td>
+                        <td class="fw-semibold">{{ value }}</td>
+                      </tr>
+                    {% endif %}
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="preview-empty p-4">
+              <h4 class="form-section-title mb-2">Previsualizacion de archivo</h4>
+              <p class="text-muted mb-0">
+                Sube un Excel en la pestana Formulario y pulsa Prevalidar archivo para ver el mapeo antes de guardar.
+              </p>
+            </div>
+          {% endif %}
+        {% else %}
+          <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+            <div>
+              <h4 class="form-section-title mb-1">Previsualizacion estructural</h4>
+              <p class="text-muted mb-0">
+                Resumen local de los campos introducidos en el formulario. No se guarda nada.
+              </p>
+            </div>
+            <span class="badge bg-light text-dark border">{{ form_field_count }} campos ISAK</span>
+          </div>
+          <div id="registroPreviewFilled" class="table-responsive d-none">
+            <table class="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th>Seccion</th>
+                  <th>Campo</th>
+                  <th>Valor</th>
+                </tr>
+              </thead>
+              <tbody id="registroPreviewBody"></tbody>
+            </table>
+          </div>
+          <div id="registroPreviewEmpty" class="preview-empty p-4">
+            <h5 class="section-title mb-2">Campos pendientes</h5>
+            <p class="text-muted mb-3">
+              Introduce valores en la pestana Formulario para verlos aqui.
+            </p>
+            <div class="row g-3">
+              {% for section in form_sections %}
+                <div class="col-12 col-lg-6">
+                  <div class="border rounded p-3 h-100 bg-white">
+                    <div class="fw-semibold">{{ section.title }}</div>
+                    <div class="small text-muted">{{ section.fields|length }} campos pendientes de completar.</div>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="physical-card p-4 mb-4">
+    <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center">
+      <div class="text-muted small">
+        Se guardara la medicion ISAK validada para la jugadora seleccionada.
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        {% if tipo_registro == "formulario" %}
+          <button type="submit" form="registroIsakForm" name="registration_action" value="validate" class="btn btn-outline-primary" {% if not selected_player_id %}disabled{% endif %}>Prevalidar medicion</button>
+          <button type="submit" form="registroIsakForm" name="registration_action" value="save" class="btn btn-primary" {% if not selected_player_id %}disabled{% endif %}>Guardar medicion</button>
+        {% else %}
+          <button type="submit" form="registroArchivoForm" name="registration_action" value="validate_file" class="btn btn-outline-primary" {% if not selected_player_id %}disabled{% endif %}>Prevalidar archivo</button>
+          <button
+            type="submit"
+            form="registroArchivoRecordForm"
+            name="registration_action"
+            value="save_file_record"
+            class="btn btn-primary"
+            {% if not (validation_result and validation_result.is_valid) %}disabled{% endif %}
+          >
+            Guardar medicion
+          </button>
+        {% endif %}
+        <a href="{{ url_for('dashboard_physical.index', plantel=plantel) }}" class="btn btn-outline-primary">Volver a Inicio</a>
+        <a href="{{ url_for('dashboard_physical.individual', plantel=plantel, jugadora=selected_player_id) }}" class="btn btn-outline-primary">Ir a Individual</a>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const fields = Array.from(document.querySelectorAll(".js-registro-field"));
+    const body = document.getElementById("registroPreviewBody");
+    const filled = document.getElementById("registroPreviewFilled");
+    const empty = document.getElementById("registroPreviewEmpty");
+
+    function renderPreview() {
+      if (!body || !filled || !empty) {
+        return;
+      }
+
+      const rows = fields
+        .map((field) => ({
+          section: field.dataset.section || "",
+          label: field.dataset.label || field.name,
+          unit: field.dataset.unit || "",
+          value: field.value
+        }))
+        .filter((row) => row.value !== null && String(row.value).trim() !== "");
+
+      body.innerHTML = "";
+
+      if (rows.length === 0) {
+        filled.classList.add("d-none");
+        empty.classList.remove("d-none");
+        return;
+      }
+
+      rows.forEach((row) => {
+        const tr = document.createElement("tr");
+        const value = row.unit ? `${row.value} ${row.unit}` : row.value;
+        const sectionCell = document.createElement("td");
+        const labelCell = document.createElement("td");
+        const valueCell = document.createElement("td");
+        sectionCell.textContent = row.section;
+        labelCell.textContent = row.label;
+        valueCell.textContent = value;
+        valueCell.classList.add("fw-semibold");
+        tr.appendChild(sectionCell);
+        tr.appendChild(labelCell);
+        tr.appendChild(valueCell);
+        body.appendChild(tr);
+      });
+
+      empty.classList.add("d-none");
+      filled.classList.remove("d-none");
+    }
+
+    fields.forEach((field) => {
+      field.addEventListener("input", renderPreview);
+      field.addEventListener("change", renderPreview);
+    });
+    renderPreview();
+  });
+</script>
+{% endblock %}

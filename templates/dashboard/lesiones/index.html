@@ -1,0 +1,382 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}Dashboard - Lesiones{% endblock %}
+
+{% block extra_css %}
+<style>
+  .lesiones-shell {
+    padding: 1.5rem 0;
+  }
+
+  .lesiones-panel {
+    background: rgba(255, 255, 255, .95);
+    border-radius: .75rem;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, .14);
+  }
+
+  .lesiones-title {
+    font-weight: 800;
+    color: #111827;
+  }
+
+  .metric-card {
+    height: 100%;
+    border: 1px solid rgba(17, 24, 39, .08);
+    border-radius: .5rem;
+    background: #fff;
+  }
+
+  .metric-label {
+    min-height: 2.5rem;
+    color: #6b7280;
+    font-size: .78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .metric-value {
+    color: #111827;
+    font-size: clamp(1.25rem, 2vw, 1.85rem);
+    font-weight: 800;
+    line-height: 1.1;
+    overflow-wrap: anywhere;
+  }
+
+  .metric-hint {
+    color: #6b7280;
+    font-size: .82rem;
+  }
+
+  .metric-delta {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: .15rem .5rem;
+    font-size: .78rem;
+    font-weight: 800;
+  }
+
+  .metric-delta-up {
+    background: rgba(220, 53, 69, .12);
+    color: #b42318;
+  }
+
+  .metric-delta-down {
+    background: rgba(25, 135, 84, .12);
+    color: #166534;
+  }
+
+  .metric-delta-flat {
+    background: rgba(107, 114, 128, .14);
+    color: #374151;
+  }
+
+  .period-toggle .btn {
+    min-width: 8rem;
+  }
+
+  .quick-access-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    min-height: 96px;
+    border: 1px solid rgba(13, 110, 253, .14);
+    border-radius: 1rem;
+    background: rgba(255, 255, 255, .96);
+    color: #111827;
+    text-decoration: none;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.10);
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+  }
+
+  .quick-access-card:hover,
+  .quick-access-card:focus {
+    color: #111827;
+    border-color: rgba(13, 110, 253, .45);
+    box-shadow: 0 12px 26px rgba(15, 23, 42, 0.16);
+    transform: translateY(-2px);
+  }
+
+  .quick-access-title {
+    font-size: 1.05rem;
+    font-weight: 800;
+  }
+
+  .quick-access-meta {
+    font-size: .85rem;
+    color: #6c757d;
+  }
+
+  .table td,
+  .table th {
+    vertical-align: middle;
+  }
+
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    min-width: 5.5rem;
+    justify-content: center;
+    border-radius: 999px;
+    padding: .25rem .65rem;
+    font-size: .78rem;
+    font-weight: 700;
+  }
+
+  .status-activo {
+    background: rgba(255, 140, 0, .18);
+    color: #92400e;
+  }
+
+  .status-inactivo {
+    background: rgba(34, 197, 94, .15);
+    color: #166534;
+  }
+
+  .status-default {
+    background: rgba(107, 114, 128, .14);
+    color: #374151;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid lesiones-shell">
+  <section class="lesiones-panel p-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+      <div>
+        <h1 class="lesiones-title mb-1">Lesiones</h1>
+        <p class="text-muted mb-0">
+          Resumen inicial de lesiones, jugadoras y registros disponibles.
+        </p>
+      </div>
+
+      <form method="get" class="d-flex flex-wrap align-items-end gap-2">
+        <input type="hidden" name="period" value="{{ period }}">
+        <div>
+          <label for="plantel" class="form-label small text-muted mb-1">Plantel</label>
+          <select id="plantel" name="plantel" class="form-select form-select-sm" onchange="this.form.submit()">
+            {% for competition in competitions %}
+              <option value="{{ competition.codigo }}" {% if plantel == competition.codigo|string %}selected{% endif %}>
+                {{ competition.nombre }}{% if competition.codigo %} ({{ competition.codigo }}){% endif %}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        {% if plantel != '1FF' %}
+          <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('dashboard_lesiones.index', period=period) }}">Limpiar</a>
+        {% endif %}
+      </form>
+    </div>
+  </section>
+
+  <section class="lesiones-panel p-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+      <div>
+        <h4 class="lesiones-title mb-1">Accesos rapidos</h4>
+        <p class="text-muted mb-0">Elige el modo de analisis del modulo Lesiones.</p>
+      </div>
+      {% if plantel %}
+        <span class="badge bg-light text-dark border">Plantel {{ plantel }}</span>
+      {% endif %}
+    </div>
+    <div class="row g-3">
+      <div class="col-12 col-md-6 col-xl-3">
+        <a class="quick-access-card p-3" href="{{ url_for('dashboard_lesiones.grupal', plantel=plantel, period=period) }}">
+          <div>
+            <div class="quick-access-title">Analisis grupal</div>
+            <div class="quick-access-meta mt-1">KPIs, filtros y graficos por plantel.</div>
+          </div>
+        </a>
+      </div>
+      <div class="col-12 col-md-6 col-xl-3">
+        <a class="quick-access-card p-3" href="{{ url_for('dashboard_lesiones.individual', plantel=plantel) }}">
+          <div>
+            <div class="quick-access-title">Analisis individual</div>
+            <div class="quick-access-meta mt-1">Ficha, KPIs e historial por jugadora.</div>
+          </div>
+        </a>
+      </div>
+      <div class="col-12 col-md-6 col-xl-3">
+        <a class="quick-access-card p-3" href="{{ url_for('dashboard_lesiones.registro', plantel=plantel) }}">
+          <div>
+            <div class="quick-access-title">Registrar lesion</div>
+            <div class="quick-access-meta mt-1">Alta de nuevas lesiones con validacion y guardado.</div>
+          </div>
+        </a>
+      </div>
+      <div class="col-12 col-md-6 col-xl-3">
+        <a class="quick-access-card p-3" href="{{ url_for('dashboard_lesiones.seguimiento', plantel=plantel) }}">
+          <div>
+            <div class="quick-access-title">Seguimiento</div>
+            <div class="quick-access-meta mt-1">Edicion, evolucion y control de lesiones registradas.</div>
+          </div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="lesiones-panel p-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+      <h2 class="h5 lesiones-title mb-0">Periodo</h2>
+      <div class="btn-group period-toggle" role="group" aria-label="Selector de periodo">
+        {% for option in period_options %}
+          <a
+            class="btn btn-sm {% if period == option.key %}btn-primary{% else %}btn-outline-primary{% endif %}"
+            href="{{ url_for('dashboard_lesiones.index', plantel=plantel, period=option.key, jugadora=filters.jugadora or None, tipo=filters.tipo or None, estado=filters.estado or None) }}"
+          >
+            {{ option.label }}
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% if all_records_count == 0 %}
+      <div class="alert alert-warning mb-0">No hay lesiones disponibles para este plantel.</div>
+    {% elif period_records_count == 0 %}
+      <div class="alert alert-info mb-0">No hay lesiones registradas en el periodo seleccionado.</div>
+    {% else %}
+      <div class="row g-3">
+        {% for kpi in kpis %}
+          <div class="col-12 col-sm-6 col-xl-3">
+            <div class="metric-card p-3">
+              <div class="metric-label">{{ kpi.label }}</div>
+              <div class="metric-value">{{ kpi.value }}</div>
+              {% if kpi.delta %}
+                {% set delta_text = kpi.delta|string %}
+                <div class="mt-2">
+                  <span class="metric-delta {% if delta_text.startswith('+') %}metric-delta-up{% elif delta_text.startswith('-') %}metric-delta-down{% else %}metric-delta-flat{% endif %}">
+                    {{ kpi.delta }}
+                  </span>
+                </div>
+              {% endif %}
+              <div class="metric-hint mt-2">{{ kpi.hint }}</div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="lesiones-panel p-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+      <div>
+        <h2 class="h5 lesiones-title mb-1">Ultimas lesiones</h2>
+        <p class="text-muted mb-0">Tabla filtrable de registros del periodo seleccionado.</p>
+      </div>
+    </div>
+
+    <form method="get" class="row g-3 align-items-end mb-4">
+      <input type="hidden" name="plantel" value="{{ plantel }}">
+      <input type="hidden" name="period" value="{{ period }}">
+
+      <div class="col-12 col-md-4">
+        <label for="jugadora" class="form-label">Jugadora</label>
+        <select id="jugadora" name="jugadora" class="form-select">
+          <option value="">Todas</option>
+          {% for option in filters.jugadoras %}
+            <option value="{{ option }}" {% if filters.jugadora == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-3">
+        <label for="tipo" class="form-label">Tipo de lesion</label>
+        <select id="tipo" name="tipo" class="form-select">
+          <option value="">Todos</option>
+          {% for option in filters.tipos %}
+            <option value="{{ option }}" {% if filters.tipo == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-3">
+        <label for="estado" class="form-label">Estado</label>
+        <select id="estado" name="estado" class="form-select">
+          <option value="">Todos</option>
+          {% for option in filters.estados %}
+            <option value="{{ option }}" {% if filters.estado == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-2 d-flex gap-2">
+        <button type="submit" class="btn btn-primary flex-fill">Filtrar</button>
+        <a class="btn btn-outline-secondary" href="{{ url_for('dashboard_lesiones.index', plantel=plantel, period=period) }}">Limpiar</a>
+      </div>
+    </form>
+
+    <form method="get" action="{{ url_for('dashboard_lesiones.individual') }}" class="row g-3 align-items-end mb-4">
+      <input type="hidden" name="plantel" value="{{ plantel }}">
+      {% if filters.tipo %}
+        <input type="hidden" name="tipo" value="{{ filters.tipo }}">
+      {% endif %}
+      <div class="col-12 col-md-5 col-xl-4">
+        <label for="abrir_jugadora" class="form-label">Abrir analisis individual de</label>
+        <select id="abrir_jugadora" name="jugadora" class="form-select" {% if not filters.individual_options %}disabled{% endif %}>
+          {% for option in filters.individual_options %}
+            <option value="{{ option.id }}">{{ option.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-3 col-xl-2">
+        <button type="submit" class="btn btn-outline-primary w-100" {% if not filters.individual_options %}disabled{% endif %}>
+          Abrir analisis
+        </button>
+      </div>
+    </form>
+
+    {% if latest_records %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Jugadora</th>
+              <th>ID lesion</th>
+              <th>Fecha lesion</th>
+              <th>Zona</th>
+              <th>Zona especifica</th>
+              <th>Tipo lesion</th>
+              <th>Dias baja</th>
+              <th>Gravedad</th>
+              <th>Estado</th>
+              <th>Reporta</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for record in latest_records %}
+              <tr>
+                <td class="fw-semibold">
+                  {% if record.id_jugadora %}
+                    <a href="{{ url_for('dashboard_lesiones.individual', plantel=plantel, jugadora=record.id_jugadora, tipo=filters.tipo or None) }}">
+                      {{ record.nombre_jugadora or "-" }}
+                    </a>
+                  {% else %}
+                    {{ record.nombre_jugadora or "-" }}
+                  {% endif %}
+                </td>
+                <td>{{ record.id_lesion or "-" }}</td>
+                <td>{{ record.fecha_lesion.strftime('%Y-%m-%d') if record.fecha_lesion else "-" }}</td>
+                <td>{{ record.zona_cuerpo or "-" }}</td>
+                <td>{{ record.zona_especifica or "-" }}</td>
+                <td>{{ record.tipo_lesion or "-" }}</td>
+                <td>{{ record.dias_baja_estimado if record.dias_baja_estimado is not none else "-" }}</td>
+                <td>{{ record.impacto_dias_baja_estimado or "-" }}</td>
+                <td>
+                  {% set status = record.estado_lesion or "" %}
+                  <span class="status-pill {% if status == 'ACTIVO' %}status-activo{% elif status == 'INACTIVO' %}status-inactivo{% else %}status-default{% endif %}">
+                    {{ status or "-" }}
+                  </span>
+                </td>
+                <td>{{ record.personal_reporta or "-" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="alert alert-info mb-0">No hay lesiones para mostrar con los filtros seleccionados.</div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

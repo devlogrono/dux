@@ -1,0 +1,359 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}Dashboard · Physical{% endblock %}
+
+{% block extra_css %}
+<style>
+  body {
+    background: url("{{ url_for('static', filename='img/fondo8.jpg') }}") no-repeat center center fixed;
+    background-size: cover;
+  }
+
+  .physical-card {
+    background: rgba(255, 255, 255, 0.94);
+    border-radius: 1rem;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.16);
+    backdrop-filter: blur(6px);
+  }
+
+  .kpi-card {
+    border: 0;
+    border-radius: 1rem;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.10);
+  }
+
+  .kpi-label {
+    font-size: .82rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+
+  .kpi-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #111827;
+  }
+
+  .section-title {
+    font-weight: 700;
+    color: #111827;
+  }
+
+  .alert-card {
+    border: 0;
+    border-radius: 1rem;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.10);
+    height: 100%;
+  }
+
+  .alert-card-danger {
+    border-left: 5px solid #dc3545;
+  }
+
+  .alert-card-success {
+    border-left: 5px solid #198754;
+  }
+
+  .alert-delta {
+    font-size: .82rem;
+    font-weight: 700;
+  }
+
+  .quick-access-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    min-height: 96px;
+    border: 1px solid rgba(13, 110, 253, .14);
+    border-radius: 1rem;
+    background: rgba(255, 255, 255, .96);
+    color: #111827;
+    text-decoration: none;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.10);
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+  }
+
+  .quick-access-card:hover {
+    color: #111827;
+    border-color: rgba(13, 110, 253, .45);
+    box-shadow: 0 12px 26px rgba(15, 23, 42, 0.16);
+    transform: translateY(-2px);
+  }
+
+  .quick-access-card.disabled {
+    color: #6c757d;
+    cursor: not-allowed;
+    opacity: .78;
+  }
+
+  .quick-access-card.disabled:hover {
+    border-color: rgba(108, 117, 125, .2);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.10);
+    transform: none;
+  }
+
+  .quick-access-title {
+    font-size: 1.05rem;
+    font-weight: 800;
+  }
+
+  .quick-access-meta {
+    font-size: .85rem;
+    color: #6c757d;
+  }
+
+  .clickable-row {
+    cursor: pointer;
+  }
+
+  .clickable-row:hover {
+    background-color: rgba(13, 110, 253, .08);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+  <div class="physical-card p-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+      <div>
+        <h1 class="section-title mb-1">Physical · Antropometría</h1>
+        <p class="text-muted mb-0">
+          Resumen inicial de registros ISAK, jugadoras y mediciones disponibles.
+        </p>
+      </div>
+
+      <form method="get" class="d-flex gap-2 align-items-end">
+        <div>
+          <label for="plantel" class="form-label small text-muted mb-1">Plantel</label>
+          <select id="plantel" name="plantel" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="">Todos</option>
+            {% for c in competitions %}
+              <option value="{{ c.codigo }}" {% if plantel == c.codigo|string %}selected{% endif %}>
+                {{ c.nombre }}{% if c.codigo %} ({{ c.codigo }}){% endif %}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {% if plantel %}
+          <a href="{{ url_for('dashboard_physical.index') }}" class="btn btn-outline-secondary btn-sm">
+            Limpiar
+          </a>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+
+  <div class="physical-card p-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+      <div>
+        <h4 class="section-title mb-1">Accesos rapidos</h4>
+        <p class="text-muted mb-0">Elige el modo de analisis del modulo Physical.</p>
+      </div>
+      {% if plantel %}
+        <span class="badge bg-light text-dark border">Plantel {{ plantel }}</span>
+      {% endif %}
+    </div>
+
+    <div class="row g-3">
+      <div class="col-12 col-md-4">
+        <a class="quick-access-card p-3" href="{{ url_for('dashboard_physical.grupal', plantel=plantel) }}">
+          <div>
+            <div class="quick-access-title">Analisis grupal</div>
+            <div class="quick-access-meta mt-1">KPIs, interpretacion y graficos por plantel.</div>
+          </div>
+        </a>
+      </div>
+
+      <div class="col-12 col-md-4">
+        <a class="quick-access-card p-3" href="{{ url_for('dashboard_physical.individual', plantel=plantel) }}">
+          <div>
+            <div class="quick-access-title">Analisis individual</div>
+            <div class="quick-access-meta mt-1">Ficha, historial y evolucion por jugadora.</div>
+          </div>
+        </a>
+      </div>
+
+      <div class="col-12 col-md-4">
+        <a class="quick-access-card p-3" href="{{ url_for('dashboard_physical.registro', plantel=plantel) }}">
+          <div>
+            <div class="quick-access-title">Registro</div>
+            <div class="quick-access-meta mt-1">Carga de nuevas mediciones ISAK.</div>
+          </div>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-12 col-md-3">
+      <div class="card kpi-card">
+        <div class="card-body">
+          <div class="kpi-label">Jugadoras activas</div>
+          <div class="kpi-value">{{ stats.total_jugadoras }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-3">
+      <div class="card kpi-card">
+        <div class="card-body">
+          <div class="kpi-label">Registros ISAK</div>
+          <div class="kpi-value">{{ stats.total_registros }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-3">
+      <div class="card kpi-card">
+        <div class="card-body">
+          <div class="kpi-label">Jugadoras con registro</div>
+          <div class="kpi-value">{{ stats.jugadoras_con_registro }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-3">
+      <div class="card kpi-card">
+        <div class="card-body">
+          <div class="kpi-label">Última medición</div>
+          <div class="kpi-value" style="font-size:1.35rem;">
+            {{ stats.ultima_medicion or "—" }}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="physical-card p-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+      <div>
+        <h4 class="section-title mb-1">Alertas</h4>
+        <p class="text-muted mb-0">
+          Basado en la ultima medicion disponible de cada jugadora y su comparacion con la anterior.
+        </p>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+      {% for card in alert_cards %}
+        <div class="col-12 col-md-6 col-xl">
+          <div class="card alert-card alert-card-{{ card.tone }}">
+            <div class="card-body">
+              <div class="kpi-label">{{ card.title }}</div>
+              <div class="kpi-value">{{ card.value }}</div>
+              {% if card.delta is not none %}
+                <div class="alert-delta text-{% if card.delta > 0 %}danger{% elif card.delta < 0 %}success{% else %}muted{% endif %}">
+                  {{ "%+d"|format(card.delta) }} vs medicion anterior
+                </div>
+              {% else %}
+                <div class="small text-muted">Comparativa ultima vs anterior</div>
+              {% endif %}
+              <div class="small text-muted mt-2">{{ card.help }}</div>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    {% if recent_worsening_rows %}
+      <h5 class="section-title mb-3">Jugadoras en empeoramiento reciente</h5>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Jugadora</th>
+              <th>N metricas empeoradas</th>
+              <th>Grasa</th>
+              <th>Musculo</th>
+              <th>Pliegues</th>
+              <th>IMO</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in recent_worsening_rows %}
+              <tr
+                {% if row.identificacion %}
+                  class="clickable-row"
+                  data-href="{{ url_for('dashboard_physical.individual', plantel=plantel, jugadora=row.identificacion) }}"
+                  title="Ver perfil individual"
+                {% endif %}
+              >
+                <td>{{ row.jugadora }}</td>
+                <td>{{ row.n_metricas }}</td>
+                <td>{% if row.grasa %}<span class="text-danger fw-semibold">{{ row.grasa }}</span>{% else %}-{% endif %}</td>
+                <td>{% if row.musculo %}<span class="text-danger fw-semibold">{{ row.musculo }}</span>{% else %}-{% endif %}</td>
+                <td>{% if row.pliegues %}<span class="text-danger fw-semibold">{{ row.pliegues }}</span>{% else %}-{% endif %}</td>
+                <td>{% if row.imo %}<span class="text-danger fw-semibold">{{ row.imo }}</span>{% else %}-{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="alert alert-success mb-0">
+        No hay jugadoras con empeoramiento reciente.
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="physical-card p-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h4 class="section-title mb-1">Últimos registros</h4>
+        <p class="text-muted mb-0">Primer bloque migrado desde la app Physical de Streamlit.</p>
+      </div>
+    </div>
+
+    {% if recent_records %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle">
+          <thead>
+            <tr>
+              <th>ID ISAK</th>
+              <th>Jugadora</th>
+              <th>Plantel</th>
+              <th>Tipo</th>
+              <th>Fecha medición</th>
+              <th>Usuario</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in recent_records %}
+              <tr>
+                <td>{{ r.id_isak }}</td>
+                <td>{{ r.nombre_jugadora }}</td>
+                <td>{{ r.plantel }}</td>
+                <td>{{ r.tipo_isak or "—" }}</td>
+                <td>{{ r.fecha_medicion or "—" }}</td>
+                <td>{{ r.usuario or "—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="alert alert-warning mb-0">
+        No hay registros disponibles para el filtro seleccionado.
+      </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll(".clickable-row[data-href]").forEach(function (row) {
+      row.addEventListener("click", function () {
+        window.location.href = row.dataset.href;
+      });
+    });
+  });
+</script>
+{% endblock %}
